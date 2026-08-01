@@ -15,7 +15,20 @@ export async function login(formData: FormData) {
   });
 
   if (error) {
-    redirect(`/login?error=${encodeURIComponent("Invalid email or password.")}`);
+    // Genuine bad credentials get a deliberately vague message so we don't
+    // confirm which emails exist. Anything else (misconfigured keys, rate
+    // limits, unconfirmed email) is a problem the operator needs to see.
+    const badCredentials =
+      error.code === "invalid_credentials" || error.status === 400;
+    const message = badCredentials
+      ? "Invalid email or password."
+      : `Sign-in failed: ${error.message}`;
+    console.error("[login] sign-in error", {
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    });
+    redirect(`/login?error=${encodeURIComponent(message)}`);
   }
 
   // Only allow internal redirects.
