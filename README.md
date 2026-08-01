@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Turnkey Solutions Network Command Center
 
-## Getting Started
+One pipeline from website lead to completed project: intake form →
+configurable kanban → project records with tasks, notes, photos, subs → ready
+to invoice in QuickBooks. Built for Turnkey Solutions Network by Prototype
+Health PLLC.
 
-First, run the development server:
+**Stack:** Next.js 15 (App Router, TypeScript, Tailwind, shadcn/ui) ·
+Supabase (Postgres, Auth, Storage) · Vercel
+
+## Routes
+
+| Route | Who | What |
+|---|---|---|
+| `/start` | Public | Work Inquiry form (replaces Airtable). Creates a New Lead project. |
+| `/sub/<token>` | Subcontractors | Job details, photo upload, mark complete, report issue. No account. |
+| `/status/<token>` | Homeowners | Friendly status milestones + owner-visible updates/photos. No account. |
+| `/login` | Staff | Email + password (signups disabled). |
+| `/today` | Staff | Daily operating screen: follow-ups, appointments, estimates, subs on site, tasks, ready to invoice. |
+| `/board` | Staff | Drag-and-drop kanban. Columns are user-editable rows in `board_columns`; each carries a semantic `kind` so Today, billing state, and the owner status page work under any names. |
+| `/projects/<id>` | Staff | Full project record. |
+| `/projects/new` | Staff | Manual project entry (phone leads). |
+| `/subs` | Staff | Subcontractor directory. |
+| `/settings` | Staff | Project types, team list. |
+
+## Local development
 
 ```bash
+npm install
+cp .env.example .env.local   # fill in the values below
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase
+  project settings → API
+- `SUPABASE_SERVICE_ROLE_KEY` — service role (server-only; used for intake,
+  token links, upload signing)
+- `NEXT_PUBLIC_APP_URL` — the site origin (used to build share-link URLs)
+- `APP_TIMEZONE` — IANA zone for "today" logic (default `America/Chicago`)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database
 
-## Learn More
+Migrations in `supabase/migrations/` are the source of truth — apply in order
+with the Supabase CLI (`supabase link` + `supabase db push`) or the SQL editor:
 
-To learn more about Next.js, take a look at the following resources:
+1. `0001_init.sql` — core schema, RLS, triggers, storage bucket, seed types
+2. `0002_project_value.sql` — project value, TSN-#### numbers, task assignees
+3. `0003_configurable_columns.sql` — user-configurable board columns; "blocked"
+   becomes a flag on the project
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Access model:** RLS is enabled everywhere with internal-only policies — any
+authenticated staff user has full access, the anon key has none. All public
+surfaces (intake form, `/sub/`, `/status/`, upload signing) run server-side
+with the service-role key after validating a token/grant. Share-link tokens
+are stored as SHA-256 hashes; the raw URL is shown once at creation. Photos
+live in the private `project-photos` bucket; "owner-visible" is a DB flag and
+all display URLs are short-lived signed URLs.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## One-time manual configuration (Supabase dashboard)
 
-## Deploy on Vercel
+1. Auth → disable public sign-ups.
+2. Auth → create staff users (Daniel, Taylor) with passwords.
+3. Auth → set Site URL + redirect URLs to the production domain.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy (Vercel)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Import the repo, framework = Next.js.
+2. Set the five env vars above (change `NEXT_PUBLIC_APP_URL` to the prod URL).
+3. Point the website and Facebook "request a quote" links at `https://<domain>/start`.
