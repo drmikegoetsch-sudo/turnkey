@@ -18,30 +18,23 @@ export default async function StartPage() {
     .order("position");
 
   return (
-    <div className="min-h-svh bg-background">
-      <header className="bg-sidebar py-6">
-        <div className="mx-auto flex max-w-2xl justify-center px-4">
-          <Image
-            src="/logo.png"
-            alt="Turnkey Solutions Network"
-            width={240}
-            height={80}
-            priority
-          />
-        </div>
+    <div className="app-ambient flex min-h-svh flex-col">
+      <header className="flex justify-center px-4 pt-8 pb-2">
+        <Image
+          src="/logo.png"
+          alt="Turnkey Solutions Network"
+          width={260}
+          height={87}
+          priority
+          className="h-auto w-48 sm:w-56"
+        />
       </header>
-      <main className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="text-3xl font-semibold tracking-tight">Work Inquiry</h1>
-        <p className="mt-2 text-muted-foreground">
-          Please fill out all required fields. You will be contacted within 48
-          hours to discuss your submission and schedule an initial visit. Thank
-          you!
-        </p>
-        <div className="mt-8">
-          <IntakeForm projectTypes={types?.map((t) => t.label) ?? []} />
-        </div>
+
+      <main className="mx-auto w-full max-w-xl flex-1 px-4 py-6 sm:py-10">
+        <IntakeForm projectTypes={types?.map((t) => t.label) ?? []} />
       </main>
-      <footer className="border-t py-6 text-center text-sm text-muted-foreground">
+
+      <footer className="py-6 text-center text-xs text-muted-foreground">
         Turnkey Solutions Network
       </footer>
     </div>

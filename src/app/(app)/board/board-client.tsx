@@ -62,8 +62,8 @@ function ProjectCard({
 
   return (
     <article
-      className={`overflow-hidden rounded-xl bg-card/70 shadow-sm ring-1 ring-white/60 backdrop-blur-xl backdrop-saturate-150 transition-shadow ${
-        dragging ? "opacity-50" : "hover:shadow-lg hover:shadow-black/10"
+      className={`glass-card overflow-hidden rounded-xl ${
+        dragging ? "opacity-50" : ""
       }`}
     >
       {project.thumbUrl ? (
@@ -187,7 +187,7 @@ function Column({
   const total = projects.reduce((sum, p) => sum + (p.projectValue ?? 0), 0);
 
   return (
-    <section className="glass-panel flex w-[82vw] max-w-[300px] shrink-0 snap-center flex-col rounded-2xl sm:w-[290px] sm:snap-align-none">
+    <section className="glass-column flex w-[82vw] max-w-[300px] shrink-0 snap-center flex-col rounded-2xl sm:w-[290px] sm:snap-align-none">
       <header className="flex items-start justify-between gap-2 px-3.5 pb-2 pt-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -209,7 +209,7 @@ function Column({
               variant="ghost"
               className="size-7 text-muted-foreground"
             >
-              <Link href="/projects/new" aria-label="Add a lead">
+              <Link href="/projects/new" aria-label="Add a project">
                 <Plus className="size-4" />
               </Link>
             </Button>
@@ -230,8 +230,8 @@ function Column({
       >
         <div
           ref={setNodeRef}
-          className={`flex min-h-32 flex-1 flex-col gap-2.5 overflow-y-auto p-2.5 pt-0.5 ${
-            isOver ? "rounded-b-2xl bg-accent/60" : ""
+          className={`flex min-h-32 flex-1 flex-col gap-2.5 overflow-y-auto p-2.5 pt-0.5 transition-colors ${
+            isOver ? "rounded-b-2xl bg-primary/15" : ""
           }`}
         >
           {projects.map((p) => (
@@ -377,9 +377,13 @@ export function BoardClient({
               </Link>
             </Button>
           ) : null}
-          <Button asChild className="gap-2 rounded-full px-5">
+          <Button
+            asChild
+            size="lg"
+            className="glass-cta gap-2 rounded-full px-6 font-semibold shadow-none hover:bg-transparent"
+          >
             <Link href="/projects/new">
-              <Plus className="size-4" /> New Lead
+              <Plus className="size-4" /> New Project
             </Link>
           </Button>
         </div>

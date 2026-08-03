@@ -1,113 +1,564 @@
 "use client";
 
-import { useState } from "react";
+// Typeform-style intake: one question per screen, keyboard-first, so a
+// homeowner never faces a wall of fields. Collects the same data the old
+// Airtable Work Inquiry did and posts it through the same server action.
+
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  intakeSchema,
-  type IntakeInput,
-  PLAN_STATUS_LABELS,
-  DESIGN_SERVICES_LABELS,
-} from "@/lib/schemas/intake";
+import { intakeSchema, type IntakeInput } from "@/lib/schemas/intake";
 import { submitIntake } from "./actions";
 import { uploadPhoto } from "@/lib/upload-client";
 import { PhotoPicker } from "@/components/photo-picker";
-import { Button } from "@/components/ui/button";
+import { QuestionShell, ChoiceCard, Chip } from "./question-shell";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 
-function Field({
-  label,
-  required,
-  error,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <Label className="leading-snug">
-        {label}
-        {required ? <span className="text-destructive"> *</span> : null}
-      </Label>
-      {children}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
-  );
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const TIMES = ["Morning", "Afternoon", "Evening"];
+
+const START_OPTIONS = [
+  "As soon as possible",
+  "Within 1 month",
+  "1–3 months",
+  "3–6 months",
+  "Just planning ahead",
+];
+
+const REFERRAL_OPTIONS = [
+  "Google search",
+  "Facebook",
+  "Referred by friend or family",
+  "Saw a job site / truck",
+  "Repeat customer",
+  "Other",
+];
+
+const BUDGET_MAX = 200000;
+
+function money(n: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(n);
 }
 
-function RadioRow({
-  name,
-  options,
-  value,
-  onChange,
-}: {
+type Answers = {
   name: string;
-  options: Record<string, string>;
-  value?: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {Object.entries(options).map(([key, label]) => (
-        <button
-          key={key}
-          type="button"
-          onClick={() => onChange(key)}
-          className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${
-            value === key
-              ? "border-primary bg-primary text-primary-foreground"
-              : "bg-card hover:bg-accent"
-          }`}
-          aria-pressed={value === key}
-          data-name={name}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
+  email: string;
+  phone: string;
+  alt_phone: string;
+  address: string;
+  project_type: string;
+  description: string;
+  budgetValue: number;
+  budgetUnsure: boolean;
+  hasPlans: "yes" | "no" | "in_progress" | "";
+  designServices: "yes" | "no" | "not_sure" | "";
+  startWhen: string;
+  completionDate: string;
+  days: string[];
+  times: string[];
+  availabilityNotes: string;
+  referral: string;
+  referralOther: string;
+  additional: string;
+};
+
+const EMPTY: Answers = {
+  name: "",
+  email: "",
+  phone: "",
+  alt_phone: "",
+  address: "",
+  project_type: "",
+  description: "",
+  budgetValue: 25000,
+  budgetUnsure: false,
+  hasPlans: "",
+  designServices: "",
+  startWhen: "",
+  completionDate: "",
+  days: [],
+  times: [],
+  availabilityNotes: "",
+  referral: "",
+  referralOther: "",
+  additional: "",
+};
+
+type Step = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  hint?: string;
+  optional?: boolean;
+  valid: boolean;
+  render: () => React.ReactNode;
+};
 
 export function IntakeForm({ projectTypes }: { projectTypes: string[] }) {
   const router = useRouter();
+  const [a, setA] = useState<Answers>(EMPTY);
   const [photos, setPhotos] = useState<File[]>([]);
-  const [extraProjects, setExtraProjects] = useState(0);
+  const [step, setStep] = useState(-1); // -1 = welcome screen
   const [submitting, setSubmitting] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<IntakeInput>({
-    resolver: zodResolver(intakeSchema),
-    defaultValues: { design_services: undefined },
-  });
+  function set<K extends keyof Answers>(key: K, value: Answers[K]) {
+    setA((prev) => ({ ...prev, [key]: value }));
+  }
 
-  const designServices = watch("design_services");
-  const p1Plans = watch("project1_has_plans");
-  const p2Plans = watch("project2_has_plans");
-  const p3Plans = watch("project3_has_plans");
-  const projectType = watch("project_type");
+  function toggle(key: "days" | "times", value: string) {
+    setA((prev) => ({
+      ...prev,
+      [key]: prev[key].includes(value)
+        ? prev[key].filter((v) => v !== value)
+        : [...prev[key], value],
+    }));
+  }
 
-  async function onSubmit(data: IntakeInput) {
+  const budgetLabel = a.budgetUnsure
+    ? "Not sure yet"
+    : a.budgetValue >= BUDGET_MAX
+      ? `${money(BUDGET_MAX)}+`
+      : money(a.budgetValue);
+
+  const availability = useMemo(() => {
+    const parts = [
+      a.days.join(", "),
+      a.times.join(" / "),
+      a.availabilityNotes.trim(),
+    ].filter(Boolean);
+    return parts.join(" · ");
+  }, [a.days, a.times, a.availabilityNotes]);
+
+  const referralValue =
+    a.referral === "Other" ? a.referralOther.trim() : a.referral;
+
+  const steps: Step[] = [
+    {
+      id: "name",
+      title: "First, what's your name?",
+      valid: a.name.trim().length > 0,
+      render: () => (
+        <Input
+          autoFocus
+          value={a.name}
+          onChange={(e) => set("name", e.target.value)}
+          placeholder="Jane Smith"
+          className="h-14 bg-white/70 text-lg backdrop-blur-sm"
+        />
+      ),
+    },
+    {
+      id: "contact",
+      title: `Nice to meet you${a.name.trim() ? `, ${a.name.trim().split(" ")[0]}` : ""}. How do we reach you?`,
+      subtitle: "We'll contact you within 48 hours.",
+      valid: /\S+@\S+\.\S+/.test(a.email) && a.phone.trim().length >= 7,
+      render: () => (
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label>Email</Label>
+            <Input
+              autoFocus
+              type="email"
+              value={a.email}
+              onChange={(e) => set("email", e.target.value)}
+              placeholder="you@example.com"
+              className="h-12 bg-white/70 backdrop-blur-sm"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label>Phone</Label>
+              <Input
+                type="tel"
+                value={a.phone}
+                onChange={(e) => set("phone", e.target.value)}
+                placeholder="(555) 123-4567"
+                className="h-12 bg-white/70 backdrop-blur-sm"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>
+                Alt. phone{" "}
+                <span className="text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                type="tel"
+                value={a.alt_phone}
+                onChange={(e) => set("alt_phone", e.target.value)}
+                className="h-12 bg-white/70 backdrop-blur-sm"
+              />
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "address",
+      title: "Where's the project located?",
+      subtitle: "Street address, city, and state.",
+      valid: a.address.trim().length >= 5,
+      render: () => (
+        <Input
+          autoFocus
+          value={a.address}
+          onChange={(e) => set("address", e.target.value)}
+          placeholder="412 Oak Street, Springfield, MO"
+          className="h-14 bg-white/70 text-lg backdrop-blur-sm"
+        />
+      ),
+    },
+    {
+      id: "type",
+      title: "What kind of work is it?",
+      subtitle: "Pick the closest match — we'll sort out the details later.",
+      valid: a.project_type.length > 0,
+      render: () => (
+        <div className="flex flex-wrap gap-2">
+          {projectTypes.map((t) => (
+            <Chip
+              key={t}
+              label={t}
+              selected={a.project_type === t}
+              onSelect={() => set("project_type", t)}
+            />
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: "description",
+      title: "Tell us about the project.",
+      subtitle:
+        "The more detail the better — what you want done, and anything we should know about the space.",
+      hint: "Tip: press ⌘ + Enter to continue.",
+      valid: a.description.trim().length >= 10,
+      render: () => (
+        <Textarea
+          autoFocus
+          rows={6}
+          value={a.description}
+          onChange={(e) => set("description", e.target.value)}
+          placeholder="We'd like to gut our kitchen — new cabinets, quartz counters, and move the sink to the island…"
+          className="bg-white/70 text-base backdrop-blur-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) next();
+          }}
+        />
+      ),
+    },
+    {
+      id: "budget",
+      title: "What's your all-in budget?",
+      subtitle:
+        "A range is fine. This helps us recommend the right approach — nothing is locked in.",
+      valid: true,
+      render: () => (
+        <div className="grid gap-6">
+          <div className="text-center">
+            <span className="font-heading text-4xl font-semibold tracking-tight">
+              {budgetLabel}
+            </span>
+          </div>
+          <Slider
+            value={[a.budgetValue]}
+            onValueChange={([v]) => {
+              set("budgetValue", v);
+              set("budgetUnsure", false);
+            }}
+            min={2500}
+            max={BUDGET_MAX}
+            step={2500}
+            disabled={a.budgetUnsure}
+            className={a.budgetUnsure ? "opacity-40" : ""}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{money(2500)}</span>
+            <span>{money(BUDGET_MAX)}+</span>
+          </div>
+          <ChoiceCard
+            label="I'm not sure yet"
+            description="That's fine — we'll help you figure it out."
+            selected={a.budgetUnsure}
+            onSelect={() => set("budgetUnsure", !a.budgetUnsure)}
+          />
+        </div>
+      ),
+    },
+    {
+      id: "plans",
+      title: "Do you already have drawings or plans?",
+      valid: a.hasPlans !== "",
+      render: () => (
+        <div className="grid gap-3">
+          {(
+            [
+              ["yes", "Yes, I have plans"],
+              ["in_progress", "In progress"],
+              ["no", "No, not yet"],
+            ] as const
+          ).map(([value, label]) => (
+            <ChoiceCard
+              key={value}
+              label={label}
+              selected={a.hasPlans === value}
+              onSelect={() => {
+                set("hasPlans", value);
+                setTimeout(advance, 180);
+              }}
+            />
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: "design",
+      title: "Would in-house design help?",
+      subtitle:
+        "We offer design services — useful if you don't have plans or want help refining them.",
+      valid: a.designServices !== "",
+      render: () => (
+        <div className="grid gap-3">
+          {(
+            [
+              ["yes", "Yes, I'd like that"],
+              ["not_sure", "Not sure — tell me more"],
+              ["no", "No thanks"],
+            ] as const
+          ).map(([value, label]) => (
+            <ChoiceCard
+              key={value}
+              label={label}
+              selected={a.designServices === value}
+              onSelect={() => {
+                set("designServices", value);
+                setTimeout(advance, 180);
+              }}
+            />
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: "photos",
+      title: "Have photos of the space?",
+      subtitle:
+        "Photos help us understand the job before we visit. You can add them later too.",
+      optional: true,
+      valid: true,
+      render: () => <PhotoPicker files={photos} onChange={setPhotos} />,
+    },
+    {
+      id: "start",
+      title: "When would you like to start?",
+      valid: a.startWhen.length > 0,
+      render: () => (
+        <div className="grid gap-3">
+          {START_OPTIONS.map((o) => (
+            <ChoiceCard
+              key={o}
+              label={o}
+              selected={a.startWhen === o}
+              onSelect={() => {
+                set("startWhen", o);
+                setTimeout(advance, 180);
+              }}
+            />
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: "completion",
+      title: "Any deadline we should know about?",
+      subtitle: "A wedding, a move-in date, a holiday — anything driving timing.",
+      optional: true,
+      valid: true,
+      render: () => (
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label>Target completion date</Label>
+            <Input
+              type="date"
+              value={a.completionDate}
+              onChange={(e) => set("completionDate", e.target.value)}
+              className="h-12 w-full max-w-xs bg-white/70 backdrop-blur-sm"
+            />
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "availability",
+      title: "When are you free for a visit?",
+      subtitle: "Pick any days and times that usually work.",
+      valid: availability.length > 0,
+      render: () => (
+        <div className="grid gap-5">
+          <div>
+            <Label className="mb-2 block">Days</Label>
+            <div className="flex flex-wrap gap-2">
+              {DAYS.map((d) => (
+                <Chip
+                  key={d}
+                  label={d}
+                  selected={a.days.includes(d)}
+                  onSelect={() => toggle("days", d)}
+                />
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label className="mb-2 block">Times</Label>
+            <div className="flex flex-wrap gap-2">
+              {TIMES.map((t) => (
+                <Chip
+                  key={t}
+                  label={t}
+                  selected={a.times.includes(t)}
+                  onSelect={() => toggle("times", t)}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>
+              Anything else about scheduling{" "}
+              <span className="text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              value={a.availabilityNotes}
+              onChange={(e) => set("availabilityNotes", e.target.value)}
+              placeholder="After 4pm is best, call before coming by…"
+              className="h-12 bg-white/70 backdrop-blur-sm"
+            />
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "referral",
+      title: "How did you hear about us?",
+      valid: referralValue.length > 0,
+      render: () => (
+        <div className="grid gap-3">
+          {REFERRAL_OPTIONS.map((o) => (
+            <ChoiceCard
+              key={o}
+              label={o}
+              selected={a.referral === o}
+              onSelect={() => set("referral", o)}
+            />
+          ))}
+          {a.referral === "Other" ? (
+            <Input
+              autoFocus
+              value={a.referralOther}
+              onChange={(e) => set("referralOther", e.target.value)}
+              placeholder="Tell us where you found us"
+              className="h-12 bg-white/70 backdrop-blur-sm"
+            />
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      id: "additional",
+      title: "Any other projects on your list?",
+      subtitle:
+        "If you're considering more than one job, mention it here and we'll cover it all in one visit.",
+      optional: true,
+      valid: true,
+      render: () => (
+        <Textarea
+          autoFocus
+          rows={4}
+          value={a.additional}
+          onChange={(e) => set("additional", e.target.value)}
+          placeholder="We're also thinking about redoing the deck next spring…"
+          className="bg-white/70 text-base backdrop-blur-sm"
+        />
+      ),
+    },
+  ];
+
+  const current = steps[step];
+  const progress = step < 0 ? 0 : ((step + 1) / steps.length) * 100;
+  const isLast = step === steps.length - 1;
+
+  function next() {
+    if (step < 0) {
+      setStep(0);
+      return;
+    }
+    if (!steps[step].valid) return;
+    if (isLast) {
+      void handleSubmit();
+      return;
+    }
+    setStep((s) => s + 1);
+  }
+
+  function skip() {
+    if (isLast) void handleSubmit();
+    else setStep((s) => s + 1);
+  }
+
+  // Choice cards advance on their own. They can't go through next(), which
+  // validates against state captured before the click lands — picking the
+  // option *is* the validation.
+  function advance() {
+    setStep((s) => Math.min(s + 1, steps.length - 1));
+  }
+
+  async function handleSubmit() {
     setSubmitting(true);
     try {
-      const result = await submitIntake(data);
-      if (!result.ok) {
-        toast.error(result.error);
+      const budgetText = a.budgetUnsure ? "Not sure yet" : budgetLabel;
+      const payload: IntakeInput = {
+        name: a.name.trim(),
+        email: a.email.trim(),
+        phone: a.phone.trim(),
+        alt_phone: a.alt_phone.trim(),
+        address: a.address.trim(),
+        meeting_availability: availability,
+        design_services: (a.designServices || "not_sure") as
+          IntakeInput["design_services"],
+        overall_budget: budgetText,
+        referral_source: referralValue,
+        project_type: a.project_type,
+        project1_description: a.description.trim(),
+        project1_budget: budgetText,
+        project1_has_plans: (a.hasPlans || undefined) as
+          IntakeInput["project1_has_plans"],
+        desired_start: a.startWhen,
+        completion_date: a.completionDate,
+        additional_projects: a.additional.trim(),
+        website: "",
+      };
+
+      const parsed = intakeSchema.safeParse(payload);
+      if (!parsed.success) {
+        toast.error("Something's missing — please check your answers.");
+        setSubmitting(false);
         return;
       }
+
+      const result = await submitIntake(parsed.data);
+      if (!result.ok) {
+        toast.error(result.error);
+        setSubmitting(false);
+        return;
+      }
+
       if (photos.length > 0 && result.grant) {
         let failed = 0;
         for (const file of photos) {
@@ -123,278 +574,94 @@ export function IntakeForm({ projectTypes }: { projectTypes: string[] }) {
         }
         if (failed > 0) {
           toast.warning(
-            `${failed} photo${failed > 1 ? "s" : ""} didn't upload — we still received your inquiry.`
+            `${failed} photo${failed > 1 ? "s" : ""} didn't upload — we still got your inquiry.`
           );
         }
       }
+
       router.push("/start/thanks");
-    } finally {
+    } catch {
+      toast.error("Something went wrong — please try again.");
       setSubmitting(false);
     }
   }
 
+  // Welcome screen
+  if (step < 0) {
+    return (
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="glass rounded-2xl p-8 sm:p-10">
+          <h1 className="font-heading text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">
+            Let&apos;s talk about your project.
+          </h1>
+          <p className="mt-3 text-lg text-muted-foreground">
+            A few quick questions — about two minutes. We&apos;ll get back to you
+            within 48 hours to schedule a visit.
+          </p>
+          <Button
+            size="lg"
+            onClick={next}
+            className="glass-cta mt-8 gap-2 rounded-full px-8 text-base font-semibold shadow-none hover:bg-transparent"
+          >
+            Get started <ArrowRight className="size-4" />
+          </Button>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Press Enter at any point to move to the next question.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="grid gap-6">
-      {/* Honeypot */}
-      <input
-        type="text"
-        tabIndex={-1}
-        autoComplete="off"
-        className="hidden"
-        aria-hidden="true"
-        {...register("website")}
-      />
+    <div
+      onKeyDown={(e) => {
+        if (
+          e.key === "Enter" &&
+          !e.shiftKey &&
+          (e.target as HTMLElement).tagName !== "TEXTAREA"
+        ) {
+          e.preventDefault();
+          next();
+        }
+      }}
+    >
+      {/* Progress */}
+      <div className="mb-5">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/40 backdrop-blur-sm">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Question {step + 1} of {steps.length}
+        </p>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Contact Information</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <Field label="Name" required error={errors.name?.message}>
-            <Input {...register("name")} autoComplete="name" />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Email" required error={errors.email?.message}>
-              <Input
-                type="email"
-                {...register("email")}
-                autoComplete="email"
-              />
-            </Field>
-            <Field label="Phone #" required error={errors.phone?.message}>
-              <Input type="tel" {...register("phone")} autoComplete="tel" />
-            </Field>
-          </div>
-          <Field label="Alt. Phone #" error={errors.alt_phone?.message}>
-            <Input type="tel" {...register("alt_phone")} />
-          </Field>
-          <Field
-            label="Address"
-            required
-            error={errors.address?.message}
-          >
-            <Input
-              {...register("address")}
-              autoComplete="street-address"
-              placeholder="Street, City, State"
-            />
-          </Field>
-          <Field
-            label="Meeting Availability (Specific Days/Times)"
-            required
-            error={errors.meeting_availability?.message}
-          >
-            <Textarea
-              {...register("meeting_availability")}
-              rows={2}
-              placeholder="e.g. Weekdays after 4pm, Saturday mornings"
-            />
-          </Field>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>About Your Project</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <Field
-            label="We offer in-house design services. Would this be helpful to you and your project?"
-            required
-            error={errors.design_services?.message}
-          >
-            <RadioRow
-              name="design_services"
-              options={DESIGN_SERVICES_LABELS}
-              value={designServices}
-              onChange={(v) =>
-                setValue("design_services", v as IntakeInput["design_services"], {
-                  shouldValidate: true,
-                })
-              }
-            />
-          </Field>
-          <Field
-            label="Do you have an idea of your total all-in budget? (Include a range if possible)"
-            required
-            error={errors.overall_budget?.message}
-          >
-            <Input
-              {...register("overall_budget")}
-              placeholder="e.g. $20,000 – $30,000"
-            />
-          </Field>
-          <Field
-            label="How did you hear about us?"
-            required
-            error={errors.referral_source?.message}
-          >
-            <Input {...register("referral_source")} />
-          </Field>
-          <Field label="What type of work is this?">
-            <div className="flex flex-wrap gap-2">
-              {projectTypes.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() =>
-                    setValue("project_type", projectType === t ? "" : t)
-                  }
-                  className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${
-                    projectType === t
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "bg-card hover:bg-accent"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </Field>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Project #1</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <Field
-            label="Can you describe the project in detail?"
-            required
-            error={errors.project1_description?.message}
-          >
-            <Textarea {...register("project1_description")} rows={4} />
-          </Field>
-          <Field
-            label="What is your budget for this project?"
-            required
-            error={errors.project1_budget?.message}
-          >
-            <Input {...register("project1_budget")} />
-          </Field>
-          <Field label="Do you have drawings or plans already?">
-            <RadioRow
-              name="project1_has_plans"
-              options={PLAN_STATUS_LABELS}
-              value={p1Plans}
-              onChange={(v) =>
-                setValue(
-                  "project1_has_plans",
-                  v as IntakeInput["project1_has_plans"]
-                )
-              }
-            />
-          </Field>
-          <Field label="Photos of the space (optional)">
-            <PhotoPicker files={photos} onChange={setPhotos} />
-          </Field>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Timing</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="When would you want the project(s) to start?">
-              <Input {...register("desired_start")} />
-            </Field>
-            <Field label="Is there a completion date for any of the projects?">
-              <Input {...register("completion_date")} />
-            </Field>
-          </div>
-          <Field label="Are there additional projects you're interested in?">
-            <Textarea {...register("additional_projects")} rows={2} />
-          </Field>
-        </CardContent>
-      </Card>
-
-      {extraProjects >= 1 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Project #2</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <Field label="Can you describe the project in detail?">
-              <Textarea {...register("project2_description")} rows={3} />
-            </Field>
-            <Field label="Do you have drawings or plans already?">
-              <RadioRow
-                name="project2_has_plans"
-                options={PLAN_STATUS_LABELS}
-                value={p2Plans}
-                onChange={(v) =>
-                  setValue(
-                    "project2_has_plans",
-                    v as IntakeInput["project2_has_plans"]
-                  )
-                }
-              />
-            </Field>
-            <Field label="What is your budget for this project?">
-              <Input {...register("project2_budget")} />
-            </Field>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {extraProjects >= 2 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Project #3</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <Field label="Can you describe the project in detail?">
-              <Textarea {...register("project3_description")} rows={3} />
-            </Field>
-            <Field label="Do you have drawings or plans already?">
-              <RadioRow
-                name="project3_has_plans"
-                options={PLAN_STATUS_LABELS}
-                value={p3Plans}
-                onChange={(v) =>
-                  setValue(
-                    "project3_has_plans",
-                    v as IntakeInput["project3_has_plans"]
-                  )
-                }
-              />
-            </Field>
-            <Field label="What is your budget for this project?">
-              <Input {...register("project3_budget")} />
-            </Field>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {extraProjects < 2 ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-fit"
-          onClick={() => setExtraProjects((n) => n + 1)}
-        >
-          + Add another project
-        </Button>
-      ) : null}
-
-      <Button
-        type="submit"
-        size="lg"
-        disabled={submitting}
-        className="w-full sm:w-auto"
+      <QuestionShell
+        index={step}
+        title={current.title}
+        subtitle={current.subtitle}
+        hint={current.hint}
+        optional={current.optional}
+        onSkip={current.optional ? skip : undefined}
+        canGoBack={step > 0}
+        onBack={() => setStep((s) => Math.max(0, s - 1))}
+        onNext={next}
+        disabled={!current.valid}
+        submitting={submitting}
+        nextLabel={isLast ? "Submit inquiry" : "Continue"}
       >
-        {submitting ? (
-          <>
-            <Loader2 className="size-4 animate-spin" />
-            Submitting…
-          </>
-        ) : (
-          "Submit Inquiry"
-        )}
-      </Button>
-    </form>
+        {current.render()}
+      </QuestionShell>
+
+      {isLast ? (
+        <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+          <Check className="size-3.5" /> You&apos;ll get a confirmation on the
+          next screen.
+        </p>
+      ) : null}
+    </div>
   );
 }

@@ -35,7 +35,7 @@ export function NewColumnDialog({ lastPosition }: { lastPosition: number }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-fit w-[210px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-foreground/20 bg-white/20 px-4 py-4 text-sm font-medium text-muted-foreground backdrop-blur-md transition-colors hover:border-solid hover:bg-white/40 hover:text-foreground"
+        className="flex h-fit w-[210px] shrink-0 items-center justify-center gap-2 rounded-2xl border border-dashed border-white/70 bg-white/25 px-4 py-4 text-sm font-medium text-muted-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)] backdrop-blur-xl backdrop-saturate-150 transition-all hover:-translate-y-0.5 hover:border-solid hover:bg-white/45 hover:text-foreground"
       >
         <Plus className="size-4" /> Add column
       </button>

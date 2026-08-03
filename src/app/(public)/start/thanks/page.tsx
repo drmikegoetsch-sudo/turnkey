@@ -5,23 +5,28 @@ export const metadata = { title: "Thank You" };
 
 export default function ThanksPage() {
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center bg-sidebar px-4 text-center">
+    <div className="app-ambient flex min-h-svh flex-col items-center justify-center px-4 py-10 text-center">
       <Image
         src="/logo.png"
         alt="Turnkey Solutions Network"
         width={260}
         height={87}
         priority
+        className="h-auto w-52"
       />
-      <div className="mt-10 max-w-md rounded-xl bg-card p-8 shadow-lg">
-        <CheckCircle2 className="mx-auto size-12 text-primary" />
-        <h1 className="mt-4 text-2xl font-semibold">Inquiry received!</h1>
+      <div className="glass mt-10 max-w-md rounded-2xl p-8 animate-in fade-in zoom-in-95 duration-500">
+        <CheckCircle2 className="mx-auto size-14 text-primary" />
+        <h1 className="mt-4 font-heading text-2xl font-semibold tracking-tight">
+          Inquiry received
+        </h1>
         <p className="mt-3 text-muted-foreground">
-          Thank you for reaching out. We&apos;ll review your project and contact
-          you within 48 hours to discuss the details and schedule an initial
-          visit.
+          Thanks for the detail — it genuinely helps. We&apos;ll review your
+          project and reach out within 48 hours to schedule a visit.
         </p>
       </div>
+      <p className="mt-8 text-xs text-muted-foreground">
+        Turnkey Solutions Network
+      </p>
     </div>
   );
 }
