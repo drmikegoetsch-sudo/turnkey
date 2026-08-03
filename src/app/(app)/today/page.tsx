@@ -35,16 +35,18 @@ function Row({
   project,
   detail,
   urgent,
+  badge,
 }: {
   project: ProjectRef;
   detail?: string | null;
   urgent?: boolean;
+  badge?: string;
 }) {
   const column = project.board_columns;
   return (
     <Link
       href={`/projects/${project.id}`}
-      className="flex items-center justify-between gap-3 rounded-lg bg-white/45 px-3.5 py-3 ring-1 ring-white/50 backdrop-blur-md transition-colors hover:bg-white/70"
+      className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-white/45 px-3.5 py-3 ring-1 ring-white/50 backdrop-blur-md transition-colors hover:bg-white/70"
     >
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{project.title}</p>
@@ -55,7 +57,12 @@ function Row({
           {detail ? ` · ${detail}` : ""}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2">
+        {badge ? (
+          <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+            {badge}
+          </span>
+        ) : null}
         {project.project_value !== null ? (
           <span className="text-sm font-semibold">
             {formatMoney(Number(project.project_value))}
@@ -224,9 +231,8 @@ export default async function TodayPage() {
               <Row
                 key={p.id}
                 project={asRef(p)}
-                detail={`${p.next_action ?? "Follow up"}${
-                  due?.tone === "overdue" ? ` (due ${p.next_action_due})` : ""
-                }`}
+                detail={p.next_action ?? "Follow up"}
+                badge={due?.tone === "overdue" ? "Overdue" : undefined}
                 urgent={due?.tone === "overdue"}
               />
             );
