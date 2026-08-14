@@ -40,3 +40,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude-temp-credentials.txt
+.claude-skill-key.txt
