@@ -1,8 +1,9 @@
 "use client";
 
-// Typeform-style intake: one question per screen, keyboard-first, so a
-// homeowner never faces a wall of fields. Collects the same data the old
-// Airtable Work Inquiry did and posts it through the same server action.
+// Typeform-style intake, condensed: six themed screens instead of one
+// question per field, so a homeowner glides through in under two minutes.
+// Collects the same data the old Airtable Work Inquiry did and posts it
+// through the same server action.
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -10,7 +11,7 @@ import { intakeSchema, type IntakeInput } from "@/lib/schemas/intake";
 import { submitIntake } from "./actions";
 import { uploadPhoto } from "@/lib/upload-client";
 import { PhotoPicker } from "@/components/photo-picker";
-import { QuestionShell, ChoiceCard, Chip } from "./question-shell";
+import { QuestionShell, Chip } from "./question-shell";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -39,6 +40,18 @@ const REFERRAL_OPTIONS = [
   "Other",
 ];
 
+const PLAN_OPTIONS = [
+  ["yes", "Yes, I have plans"],
+  ["in_progress", "In progress"],
+  ["no", "Not yet"],
+] as const;
+
+const DESIGN_OPTIONS = [
+  ["yes", "Yes, I'd like that"],
+  ["not_sure", "Not sure — tell me more"],
+  ["no", "No thanks"],
+] as const;
+
 const BUDGET_MAX = 200000;
 
 function money(n: number) {
@@ -47,6 +60,31 @@ function money(n: number) {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+// Small heading for grouped questions within one screen.
+function Group({
+  label,
+  optional,
+  children,
+}: {
+  label: string;
+  optional?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-2">
+      <p className="text-sm font-medium">
+        {label}
+        {optional ? (
+          <span className="ml-1.5 font-normal text-muted-foreground">
+            (optional)
+          </span>
+        ) : null}
+      </p>
+      {children}
+    </div>
+  );
 }
 
 type Answers = {
@@ -141,351 +179,286 @@ export function IntakeForm({ projectTypes }: { projectTypes: string[] }) {
   const referralValue =
     a.referral === "Other" ? a.referralOther.trim() : a.referral;
 
+  const firstName = a.name.trim().split(" ")[0];
+
   const steps: Step[] = [
+    // ------------------------------------------------ 1 · who you are
     {
-      id: "name",
-      title: "First, what's your name?",
-      valid: a.name.trim().length > 0,
-      render: () => (
-        <Input
-          autoFocus
-          value={a.name}
-          onChange={(e) => set("name", e.target.value)}
-          placeholder="Jane Smith"
-          className="h-14 bg-white/70 text-lg backdrop-blur-sm"
-        />
-      ),
-    },
-    {
-      id: "contact",
-      title: `Nice to meet you${a.name.trim() ? `, ${a.name.trim().split(" ")[0]}` : ""}. How do we reach you?`,
-      subtitle: "We'll contact you within 48 hours.",
-      valid: /\S+@\S+\.\S+/.test(a.email) && a.phone.trim().length >= 7,
+      id: "about-you",
+      title: "First, tell us about yourself.",
+      subtitle: "We'll reach out within 48 hours to schedule a visit.",
+      valid:
+        a.name.trim().length > 0 &&
+        /\S+@\S+\.\S+/.test(a.email) &&
+        a.phone.trim().length >= 7,
       render: () => (
         <div className="grid gap-4">
-          <div className="grid gap-1.5">
-            <Label>Email</Label>
+          <Group label="Your name">
             <Input
               autoFocus
+              value={a.name}
+              onChange={(e) => set("name", e.target.value)}
+              placeholder="Jane Smith"
+              autoComplete="name"
+              className="h-12 bg-white/70 backdrop-blur-sm"
+            />
+          </Group>
+          <Group label="Email">
+            <Input
               type="email"
               value={a.email}
               onChange={(e) => set("email", e.target.value)}
               placeholder="you@example.com"
+              autoComplete="email"
               className="h-12 bg-white/70 backdrop-blur-sm"
             />
-          </div>
+          </Group>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-1.5">
-              <Label>Phone</Label>
+            <Group label="Phone">
               <Input
                 type="tel"
                 value={a.phone}
                 onChange={(e) => set("phone", e.target.value)}
                 placeholder="(555) 123-4567"
+                autoComplete="tel"
                 className="h-12 bg-white/70 backdrop-blur-sm"
               />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>
-                Alt. phone{" "}
-                <span className="text-muted-foreground">(optional)</span>
-              </Label>
+            </Group>
+            <Group label="Alt. phone" optional>
               <Input
                 type="tel"
                 value={a.alt_phone}
                 onChange={(e) => set("alt_phone", e.target.value)}
                 className="h-12 bg-white/70 backdrop-blur-sm"
               />
-            </div>
+            </Group>
           </div>
         </div>
       ),
     },
+    // ------------------------------------------------ 2 · the project
     {
-      id: "address",
-      title: "Where's the project located?",
-      subtitle: "Street address, city, and state.",
-      valid: a.address.trim().length >= 5,
+      id: "project",
+      title: firstName
+        ? `Thanks, ${firstName}. Where's the project?`
+        : "Where's the project?",
+      valid: a.address.trim().length >= 5 && a.project_type.length > 0,
       render: () => (
-        <Input
-          autoFocus
-          value={a.address}
-          onChange={(e) => set("address", e.target.value)}
-          placeholder="412 Oak Street, Springfield, MO"
-          className="h-14 bg-white/70 text-lg backdrop-blur-sm"
-        />
-      ),
-    },
-    {
-      id: "type",
-      title: "What kind of work is it?",
-      subtitle: "Pick the closest match — we'll sort out the details later.",
-      valid: a.project_type.length > 0,
-      render: () => (
-        <div className="flex flex-wrap gap-2">
-          {projectTypes.map((t) => (
-            <Chip
-              key={t}
-              label={t}
-              selected={a.project_type === t}
-              onSelect={() => set("project_type", t)}
+        <div className="grid gap-5">
+          <Group label="Project address">
+            <Input
+              autoFocus
+              value={a.address}
+              onChange={(e) => set("address", e.target.value)}
+              placeholder="412 Oak Street, Springfield, MO"
+              autoComplete="street-address"
+              className="h-12 bg-white/70 backdrop-blur-sm"
             />
-          ))}
+          </Group>
+          <Group label="What kind of work is it?">
+            <div className="flex flex-wrap gap-2">
+              {projectTypes.map((t) => (
+                <Chip
+                  key={t}
+                  label={t}
+                  selected={a.project_type === t}
+                  onSelect={() => set("project_type", t)}
+                />
+              ))}
+            </div>
+          </Group>
         </div>
       ),
     },
+    // ------------------------------------------------ 3 · describe it
     {
-      id: "description",
+      id: "details",
       title: "Tell us about the project.",
       subtitle:
-        "The more detail the better — what you want done, and anything we should know about the space.",
+        "The more detail the better — and photos of the space help us understand the job before we visit.",
       hint: "Tip: press ⌘ + Enter to continue.",
       valid: a.description.trim().length >= 10,
       render: () => (
-        <Textarea
-          autoFocus
-          rows={6}
-          value={a.description}
-          onChange={(e) => set("description", e.target.value)}
-          placeholder="We'd like to gut our kitchen — new cabinets, quartz counters, and move the sink to the island…"
-          className="bg-white/70 text-base backdrop-blur-sm"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) next();
-          }}
-        />
+        <div className="grid gap-5">
+          <Textarea
+            autoFocus
+            rows={5}
+            value={a.description}
+            onChange={(e) => set("description", e.target.value)}
+            placeholder="We'd like to gut our kitchen — new cabinets, quartz counters, and move the sink to the island…"
+            className="bg-white/70 text-base backdrop-blur-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) next();
+            }}
+          />
+          <Group label="Photos of the space" optional>
+            <PhotoPicker files={photos} onChange={setPhotos} />
+          </Group>
+        </div>
       ),
     },
+    // ------------------------------------------------ 4 · budget & plans
     {
-      id: "budget",
-      title: "What's your all-in budget?",
+      id: "budget-plans",
+      title: "Let's talk budget and plans.",
       subtitle:
-        "A range is fine. This helps us recommend the right approach — nothing is locked in.",
-      valid: true,
+        "A ballpark is fine — nothing is locked in. It just helps us recommend the right approach.",
+      valid: a.hasPlans !== "" && a.designServices !== "",
       render: () => (
         <div className="grid gap-6">
-          <div className="text-center">
-            <span className="font-heading text-4xl font-semibold tracking-tight">
-              {budgetLabel}
-            </span>
+          <div className="grid gap-4">
+            <div className="text-center">
+              <span className="font-heading text-3xl font-semibold tracking-tight">
+                {budgetLabel}
+              </span>
+            </div>
+            <Slider
+              value={[a.budgetValue]}
+              onValueChange={([v]) => {
+                set("budgetValue", v);
+                set("budgetUnsure", false);
+              }}
+              min={2500}
+              max={BUDGET_MAX}
+              step={2500}
+              disabled={a.budgetUnsure}
+              className={a.budgetUnsure ? "opacity-40" : ""}
+            />
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{money(2500)}</span>
+              <Chip
+                label="Not sure yet"
+                selected={a.budgetUnsure}
+                onSelect={() => set("budgetUnsure", !a.budgetUnsure)}
+              />
+              <span>{money(BUDGET_MAX)}+</span>
+            </div>
           </div>
-          <Slider
-            value={[a.budgetValue]}
-            onValueChange={([v]) => {
-              set("budgetValue", v);
-              set("budgetUnsure", false);
-            }}
-            min={2500}
-            max={BUDGET_MAX}
-            step={2500}
-            disabled={a.budgetUnsure}
-            className={a.budgetUnsure ? "opacity-40" : ""}
-          />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{money(2500)}</span>
-            <span>{money(BUDGET_MAX)}+</span>
-          </div>
-          <ChoiceCard
-            label="I'm not sure yet"
-            description="That's fine — we'll help you figure it out."
-            selected={a.budgetUnsure}
-            onSelect={() => set("budgetUnsure", !a.budgetUnsure)}
-          />
+          <Group label="Do you already have drawings or plans?">
+            <div className="flex flex-wrap gap-2">
+              {PLAN_OPTIONS.map(([value, label]) => (
+                <Chip
+                  key={value}
+                  label={label}
+                  selected={a.hasPlans === value}
+                  onSelect={() => set("hasPlans", value)}
+                />
+              ))}
+            </div>
+          </Group>
+          <Group label="Would our in-house design services help?">
+            <div className="flex flex-wrap gap-2">
+              {DESIGN_OPTIONS.map(([value, label]) => (
+                <Chip
+                  key={value}
+                  label={label}
+                  selected={a.designServices === value}
+                  onSelect={() => set("designServices", value)}
+                />
+              ))}
+            </div>
+          </Group>
         </div>
       ),
     },
+    // ------------------------------------------------ 5 · timing & visit
     {
-      id: "plans",
-      title: "Do you already have drawings or plans?",
-      valid: a.hasPlans !== "",
+      id: "timing",
+      title: "When works for you?",
+      valid: a.startWhen.length > 0 && availability.length > 0,
       render: () => (
-        <div className="grid gap-3">
-          {(
-            [
-              ["yes", "Yes, I have plans"],
-              ["in_progress", "In progress"],
-              ["no", "No, not yet"],
-            ] as const
-          ).map(([value, label]) => (
-            <ChoiceCard
-              key={value}
-              label={label}
-              selected={a.hasPlans === value}
-              onSelect={() => {
-                set("hasPlans", value);
-                setTimeout(advance, 180);
-              }}
-            />
-          ))}
-        </div>
-      ),
-    },
-    {
-      id: "design",
-      title: "Would in-house design help?",
-      subtitle:
-        "We offer design services — useful if you don't have plans or want help refining them.",
-      valid: a.designServices !== "",
-      render: () => (
-        <div className="grid gap-3">
-          {(
-            [
-              ["yes", "Yes, I'd like that"],
-              ["not_sure", "Not sure — tell me more"],
-              ["no", "No thanks"],
-            ] as const
-          ).map(([value, label]) => (
-            <ChoiceCard
-              key={value}
-              label={label}
-              selected={a.designServices === value}
-              onSelect={() => {
-                set("designServices", value);
-                setTimeout(advance, 180);
-              }}
-            />
-          ))}
-        </div>
-      ),
-    },
-    {
-      id: "photos",
-      title: "Have photos of the space?",
-      subtitle:
-        "Photos help us understand the job before we visit. You can add them later too.",
-      optional: true,
-      valid: true,
-      render: () => <PhotoPicker files={photos} onChange={setPhotos} />,
-    },
-    {
-      id: "start",
-      title: "When would you like to start?",
-      valid: a.startWhen.length > 0,
-      render: () => (
-        <div className="grid gap-3">
-          {START_OPTIONS.map((o) => (
-            <ChoiceCard
-              key={o}
-              label={o}
-              selected={a.startWhen === o}
-              onSelect={() => {
-                set("startWhen", o);
-                setTimeout(advance, 180);
-              }}
-            />
-          ))}
-        </div>
-      ),
-    },
-    {
-      id: "completion",
-      title: "Any deadline we should know about?",
-      subtitle: "A wedding, a move-in date, a holiday — anything driving timing.",
-      optional: true,
-      valid: true,
-      render: () => (
-        <div className="grid gap-4">
-          <div className="grid gap-1.5">
-            <Label>Target completion date</Label>
+        <div className="grid gap-6">
+          <Group label="When would you like to start?">
+            <div className="flex flex-wrap gap-2">
+              {START_OPTIONS.map((o) => (
+                <Chip
+                  key={o}
+                  label={o}
+                  selected={a.startWhen === o}
+                  onSelect={() => set("startWhen", o)}
+                />
+              ))}
+            </div>
+          </Group>
+          <Group label="Any deadline we should know about?" optional>
             <Input
               type="date"
               value={a.completionDate}
               onChange={(e) => set("completionDate", e.target.value)}
               className="h-12 w-full max-w-xs bg-white/70 backdrop-blur-sm"
             />
-          </div>
+          </Group>
+          <Group label="When are you usually free for a visit?">
+            <div className="grid gap-3">
+              <div className="flex flex-wrap gap-2">
+                {DAYS.map((d) => (
+                  <Chip
+                    key={d}
+                    label={d}
+                    selected={a.days.includes(d)}
+                    onSelect={() => toggle("days", d)}
+                  />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {TIMES.map((t) => (
+                  <Chip
+                    key={t}
+                    label={t}
+                    selected={a.times.includes(t)}
+                    onSelect={() => toggle("times", t)}
+                  />
+                ))}
+              </div>
+              <Input
+                value={a.availabilityNotes}
+                onChange={(e) => set("availabilityNotes", e.target.value)}
+                placeholder="Anything else — “after 4pm is best”, “call first”…"
+                className="h-12 bg-white/70 backdrop-blur-sm"
+              />
+            </div>
+          </Group>
         </div>
       ),
     },
+    // ------------------------------------------------ 6 · final details
     {
-      id: "availability",
-      title: "When are you free for a visit?",
-      subtitle: "Pick any days and times that usually work.",
-      valid: availability.length > 0,
-      render: () => (
-        <div className="grid gap-5">
-          <div>
-            <Label className="mb-2 block">Days</Label>
-            <div className="flex flex-wrap gap-2">
-              {DAYS.map((d) => (
-                <Chip
-                  key={d}
-                  label={d}
-                  selected={a.days.includes(d)}
-                  onSelect={() => toggle("days", d)}
-                />
-              ))}
-            </div>
-          </div>
-          <div>
-            <Label className="mb-2 block">Times</Label>
-            <div className="flex flex-wrap gap-2">
-              {TIMES.map((t) => (
-                <Chip
-                  key={t}
-                  label={t}
-                  selected={a.times.includes(t)}
-                  onSelect={() => toggle("times", t)}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label>
-              Anything else about scheduling{" "}
-              <span className="text-muted-foreground">(optional)</span>
-            </Label>
-            <Input
-              value={a.availabilityNotes}
-              onChange={(e) => set("availabilityNotes", e.target.value)}
-              placeholder="After 4pm is best, call before coming by…"
-              className="h-12 bg-white/70 backdrop-blur-sm"
-            />
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: "referral",
-      title: "How did you hear about us?",
+      id: "final",
+      title: "Last one — a couple of quick details.",
       valid: referralValue.length > 0,
       render: () => (
-        <div className="grid gap-3">
-          {REFERRAL_OPTIONS.map((o) => (
-            <ChoiceCard
-              key={o}
-              label={o}
-              selected={a.referral === o}
-              onSelect={() => set("referral", o)}
+        <div className="grid gap-6">
+          <Group label="How did you hear about us?">
+            <div className="flex flex-wrap gap-2">
+              {REFERRAL_OPTIONS.map((o) => (
+                <Chip
+                  key={o}
+                  label={o}
+                  selected={a.referral === o}
+                  onSelect={() => set("referral", o)}
+                />
+              ))}
+            </div>
+            {a.referral === "Other" ? (
+              <Input
+                autoFocus
+                value={a.referralOther}
+                onChange={(e) => set("referralOther", e.target.value)}
+                placeholder="Tell us where you found us"
+                className="h-12 bg-white/70 backdrop-blur-sm"
+              />
+            ) : null}
+          </Group>
+          <Group label="Any other projects on your list?" optional>
+            <Textarea
+              rows={3}
+              value={a.additional}
+              onChange={(e) => set("additional", e.target.value)}
+              placeholder="We're also thinking about redoing the deck next spring…"
+              className="bg-white/70 text-base backdrop-blur-sm"
             />
-          ))}
-          {a.referral === "Other" ? (
-            <Input
-              autoFocus
-              value={a.referralOther}
-              onChange={(e) => set("referralOther", e.target.value)}
-              placeholder="Tell us where you found us"
-              className="h-12 bg-white/70 backdrop-blur-sm"
-            />
-          ) : null}
+          </Group>
         </div>
-      ),
-    },
-    {
-      id: "additional",
-      title: "Any other projects on your list?",
-      subtitle:
-        "If you're considering more than one job, mention it here and we'll cover it all in one visit.",
-      optional: true,
-      valid: true,
-      render: () => (
-        <Textarea
-          autoFocus
-          rows={4}
-          value={a.additional}
-          onChange={(e) => set("additional", e.target.value)}
-          placeholder="We're also thinking about redoing the deck next spring…"
-          className="bg-white/70 text-base backdrop-blur-sm"
-        />
       ),
     },
   ];
@@ -510,13 +483,6 @@ export function IntakeForm({ projectTypes }: { projectTypes: string[] }) {
   function skip() {
     if (isLast) void handleSubmit();
     else setStep((s) => s + 1);
-  }
-
-  // Choice cards advance on their own. They can't go through next(), which
-  // validates against state captured before the click lands — picking the
-  // option *is* the validation.
-  function advance() {
-    setStep((s) => Math.min(s + 1, steps.length - 1));
   }
 
   async function handleSubmit() {
@@ -595,7 +561,7 @@ export function IntakeForm({ projectTypes }: { projectTypes: string[] }) {
             Let&apos;s talk about your project.
           </h1>
           <p className="mt-3 text-lg text-muted-foreground">
-            A few quick questions — about two minutes. We&apos;ll get back to you
+            Six quick screens — about two minutes. We&apos;ll get back to you
             within 48 hours to schedule a visit.
           </p>
           <Button
@@ -606,7 +572,7 @@ export function IntakeForm({ projectTypes }: { projectTypes: string[] }) {
             Get started <ArrowRight className="size-4" />
           </Button>
           <p className="mt-4 text-xs text-muted-foreground">
-            Press Enter at any point to move to the next question.
+            Press Enter at any point to move to the next screen.
           </p>
         </div>
       </div>
@@ -635,7 +601,7 @@ export function IntakeForm({ projectTypes }: { projectTypes: string[] }) {
           />
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Question {step + 1} of {steps.length}
+          Step {step + 1} of {steps.length}
         </p>
       </div>
 
