@@ -50,14 +50,15 @@ export async function submitIntake(input: IntakeInput): Promise<IntakeResult> {
 
   const admin = createAdminClient();
 
-  // New leads land in the first column on the board, whatever it's called.
-  const { data: firstColumn } = await admin
+  // New leads land in the column whose kind is 'lead', wherever it sits and
+  // whatever it's been renamed to. Fall back to the leftmost column if the
+  // owners ever remove their lead column entirely.
+  const { data: columns } = await admin
     .from("board_columns")
-    .select("id, label")
+    .select("id, label, kind")
     .is("archived_at", null)
-    .order("position")
-    .limit(1)
-    .maybeSingle();
+    .order("position");
+  const firstColumn = columns?.find((c) => c.kind === "lead") ?? columns?.[0];
   if (!firstColumn) {
     return { ok: false, error: "Something went wrong — please try again." };
   }

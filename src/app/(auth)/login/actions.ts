@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function login(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
@@ -31,8 +32,24 @@ export async function login(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(message)}`);
   }
 
-  // Only allow internal redirects.
-  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/today");
+  // Subs get their own portal; staff go to the dashboard. A `next` hint is
+  // honored only when it fits the signed-in user's role.
+  const admin = createAdminClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: profile } = user
+    ? await admin.from("profiles").select("role").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const isSub = profile?.role === "sub";
+
+  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "";
+  const home = isSub ? "/my-jobs" : "/today";
+  const nextFitsRole = isSub
+    ? safeNext.startsWith("/my-jobs")
+    : safeNext && !safeNext.startsWith("/my-jobs");
+
+  redirect(nextFitsRole ? safeNext : home);
 }
 
 export async function logout() {

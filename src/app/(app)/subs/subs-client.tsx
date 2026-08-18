@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addSub, updateSub, deleteSub, type SubInput } from "./actions";
+import {
+  addSub,
+  updateSub,
+  deleteSub,
+  inviteSub,
+  revokeSubAccess,
+  type SubInput,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,7 +30,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Phone, Mail } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Phone,
+  Mail,
+  Send,
+  CircleCheckBig,
+  Ban,
+} from "lucide-react";
 
 type Sub = {
   id: string;
@@ -33,6 +49,8 @@ type Sub = {
   phone: string | null;
   email: string | null;
   notes: string | null;
+  hasAccount: boolean;
+  invitedAt: string | null;
   activeJobs: number;
 };
 
@@ -100,6 +118,7 @@ export function SubsClient({ subs }: { subs: Sub[] }) {
               <TableHead>Name</TableHead>
               <TableHead>Trade</TableHead>
               <TableHead>Contact</TableHead>
+              <TableHead>Portal access</TableHead>
               <TableHead className="text-center">Active Jobs</TableHead>
               <TableHead />
             </TableRow>
@@ -134,6 +153,35 @@ export function SubsClient({ subs }: { subs: Sub[] }) {
                     </a>
                   ) : null}
                 </TableCell>
+                <TableCell>
+                  {s.hasAccount ? (
+                    <span className="flex items-center gap-1.5 text-sm text-emerald-700">
+                      <CircleCheckBig className="size-4" /> Active
+                    </span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant={s.invitedAt ? "ghost" : "outline"}
+                      className="gap-1.5"
+                      disabled={pending || !s.email}
+                      title={
+                        s.email
+                          ? undefined
+                          : "Add an email address for this sub first"
+                      }
+                      onClick={() =>
+                        startTransition(async () => {
+                          const res = await inviteSub(s.id);
+                          if (res.ok) toast.success(`Invite sent to ${res.email}`);
+                          else toast.error(res.error);
+                        })
+                      }
+                    >
+                      <Send className="size-3.5" />
+                      {s.invitedAt ? "Resend invite" : "Invite"}
+                    </Button>
+                  )}
+                </TableCell>
                 <TableCell className="text-center">
                   {s.activeJobs > 0 ? (
                     <Badge>{s.activeJobs}</Badge>
@@ -143,6 +191,29 @@ export function SubsClient({ subs }: { subs: Sub[] }) {
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
+                    {s.hasAccount ? (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="Revoke portal access"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => {
+                          if (
+                            !confirm(
+                              `Revoke ${s.name}'s login? Their work history stays; only the sign-in is removed.`
+                            )
+                          )
+                            return;
+                          startTransition(async () => {
+                            const res = await revokeSubAccess(s.id);
+                            if (res.ok) toast.success("Access revoked");
+                            else toast.error(res.error);
+                          });
+                        }}
+                      >
+                        <Ban className="size-4" />
+                      </Button>
+                    ) : null}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -172,7 +243,7 @@ export function SubsClient({ subs }: { subs: Sub[] }) {
             {subs.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className="py-8 text-center text-muted-foreground"
                 >
                   No subcontractors yet — add your regular crews so you can

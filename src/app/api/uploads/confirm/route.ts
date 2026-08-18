@@ -3,13 +3,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { findActiveShareLink } from "@/lib/share-links";
 import { verifyIntakeGrant } from "@/lib/uploads";
+import { getSubIdentity, getSubAssignment } from "@/lib/sub-session";
 import { PHOTO_TYPES } from "@/lib/stages";
 
 // Creates the photos row after the client finishes uploading to storage.
 // Same three authorization contexts as /api/uploads/sign.
 export async function POST(request: NextRequest) {
   let body: {
-    context?: "staff" | "intake" | "share";
+    context?: "staff" | "intake" | "share" | "sub";
     grant?: string;
     token?: string;
     projectId?: string;
@@ -66,6 +67,16 @@ export async function POST(request: NextRequest) {
     }
     shareLinkId = link.id;
     uploadedByKind = link.kind === "sub" ? "sub" : "customer";
+    visibility = "internal";
+  } else if (context === "sub") {
+    const identity = await getSubIdentity();
+    const assignment = identity
+      ? await getSubAssignment(identity.subcontractorId, projectId)
+      : null;
+    if (!assignment) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    uploadedByKind = "sub";
     visibility = "internal";
   } else {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

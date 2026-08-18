@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 export type UploadAuth =
   | { context: "staff" }
   | { context: "intake"; grant: string }
-  | { context: "share"; token: string };
+  | { context: "share"; token: string }
+  | { context: "sub" };
 
 export type UploadOptions = {
   projectId: string;
@@ -38,7 +39,9 @@ export async function uploadPhoto(file: File, opts: UploadOptions) {
       ? { context: "intake", grant: opts.auth.grant }
       : opts.auth.context === "share"
         ? { context: "share", token: opts.auth.token }
-        : { context: "staff" };
+        : opts.auth.context === "sub"
+          ? { context: "sub" }
+          : { context: "staff" };
 
   const signRes = await fetch("/api/uploads/sign", {
     method: "POST",

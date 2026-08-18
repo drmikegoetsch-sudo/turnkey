@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { findActiveShareLink } from "@/lib/share-links";
+import { getSubIdentity, getSubAssignment } from "@/lib/sub-session";
 import {
   ALLOWED_IMAGE_TYPES,
   MAX_UPLOAD_BYTES,
@@ -17,7 +18,7 @@ import {
 //   share  — raw share-link token (sub or owner link)
 export async function POST(request: NextRequest) {
   let body: {
-    context?: "staff" | "intake" | "share";
+    context?: "staff" | "intake" | "share" | "sub";
     grant?: string;
     token?: string;
     projectId?: string;
@@ -68,6 +69,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     shareLinkId = link.id;
+  } else if (context === "sub") {
+    // Logged-in subcontractor — must be assigned to this project.
+    const identity = await getSubIdentity();
+    const assignment = identity
+      ? await getSubAssignment(identity.subcontractorId, projectId)
+      : null;
+    if (!assignment) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   } else {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

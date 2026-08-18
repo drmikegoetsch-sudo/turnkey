@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { logout } from "@/app/(auth)/login/actions";
 import { TopBar } from "@/components/top-bar";
 
@@ -22,11 +23,19 @@ export default async function AppLayout({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
+  // Read the profile with the admin client: RLS is staff-only, so a sub
+  // reading their own row through the session client gets nothing — which
+  // would silently defeat this guard.
+  const admin = createAdminClient();
+  const { data: profile } = await admin
     .from("profiles")
-    .select("full_name")
+    .select("full_name, role")
     .eq("id", user.id)
     .maybeSingle();
+
+  // Subcontractors have no business in the staff app. RLS already starves
+  // these pages of data; this keeps them out of the UI entirely.
+  if (profile?.role === "sub") redirect("/my-jobs");
 
   return (
     <div className="app-ambient flex min-h-svh flex-col">

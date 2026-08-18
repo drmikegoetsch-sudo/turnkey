@@ -8,7 +8,7 @@ export default async function SubsPage() {
   const supabase = await createClient();
   const { data: subs } = await supabase
     .from("subcontractors")
-    .select("*, project_subcontractors(project_id, status)")
+    .select("*, user_id, invited_at, project_subcontractors(project_id, status)")
     .order("name");
 
   return (
@@ -22,6 +22,8 @@ export default async function SubsPage() {
           phone: s.phone,
           email: s.email,
           notes: s.notes,
+          hasAccount: !!s.user_id,
+          invitedAt: s.invited_at,
           activeJobs: (
             s.project_subcontractors as { status: string }[] | null
           )?.filter((a) => a.status !== "complete").length ?? 0,
