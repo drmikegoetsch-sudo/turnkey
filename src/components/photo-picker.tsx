@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { ImagePlus, X } from "lucide-react";
+import { Film, ImagePlus, X } from "lucide-react";
 
 export function PhotoPicker({
   files,
@@ -32,10 +32,10 @@ export function PhotoPicker({
   const addFiles = useCallback(
     (incoming: FileList | null) => {
       if (!incoming) return;
-      const images = Array.from(incoming).filter((f) =>
-        f.type.startsWith("image/")
+      const media = Array.from(incoming).filter(
+        (f) => f.type.startsWith("image/") || f.type.startsWith("video/")
       );
-      onChange([...files, ...images].slice(0, max));
+      onChange([...files, ...media].slice(0, max));
     },
     [files, max, onChange]
   );
@@ -45,7 +45,7 @@ export function PhotoPicker({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/*"
         multiple
         className="hidden"
         onChange={(e) => {
@@ -60,18 +60,25 @@ export function PhotoPicker({
         className="w-fit gap-2"
       >
         <ImagePlus className="size-4" />
-        Add Photos
+        Add Photos or Video
       </Button>
       {files.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {files.map((file, i) => (
             <div key={`${file.name}-${i}`} className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={previews[i]}
-                alt={file.name}
-                className="size-20 rounded-md border object-cover"
-              />
+              {file.type.startsWith("video/") ? (
+                <span className="flex size-20 flex-col items-center justify-center gap-1 rounded-md border bg-muted text-muted-foreground">
+                  <Film className="size-5" />
+                  <span className="px-1 text-[10px] leading-tight">Video</span>
+                </span>
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={previews[i]}
+                  alt={file.name}
+                  className="size-20 rounded-md border object-cover"
+                />
+              )}
               <button
                 type="button"
                 aria-label={`Remove ${file.name}`}

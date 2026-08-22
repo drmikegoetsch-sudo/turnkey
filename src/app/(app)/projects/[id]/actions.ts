@@ -410,7 +410,7 @@ export async function deletePhoto(projectId: string, photoId: string) {
   const { supabase } = await requireUser();
   const { data: photo } = await supabase
     .from("photos")
-    .select("storage_path")
+    .select("storage_path, thumbnail_path")
     .eq("id", photoId)
     .single();
   if (!photo) return { ok: false as const, error: "Photo not found" };
@@ -418,8 +418,12 @@ export async function deletePhoto(projectId: string, photoId: string) {
   const { error } = await supabase.from("photos").delete().eq("id", photoId);
   if (error) return { ok: false as const, error: "Could not delete photo" };
 
+  // Remove the video's poster frame alongside the media itself.
   const admin = createAdminClient();
-  await admin.storage.from("project-photos").remove([photo.storage_path]);
+  const paths = [photo.storage_path, photo.thumbnail_path].filter(
+    (p): p is string => !!p
+  );
+  await admin.storage.from("project-photos").remove(paths);
   refresh(projectId);
   return { ok: true as const };
 }

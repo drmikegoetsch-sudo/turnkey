@@ -35,9 +35,13 @@ export function JobActions({
 
   async function handleFiles(list: FileList | null) {
     if (!list?.length) return;
-    const files = Array.from(list).filter((f) => f.type.startsWith("image/"));
+    const files = Array.from(list).filter(
+      (f) => f.type.startsWith("image/") || f.type.startsWith("video/")
+    );
+    if (files.length === 0) return;
     setUploading(files.length);
     let failed = 0;
+    let lastError = "";
     for (const file of files) {
       try {
         await uploadPhoto(file, {
@@ -45,13 +49,17 @@ export function JobActions({
           photoType,
           auth: { context: "sub" },
         });
-      } catch {
+      } catch (e) {
         failed += 1;
+        lastError = e instanceof Error ? e.message : "";
       }
       setUploading((n) => n - 1);
     }
-    if (failed > 0) toast.error(`${failed} upload(s) failed — try again`);
-    else toast.success("Photos uploaded");
+    if (failed > 0) {
+      toast.error(lastError || `${failed} upload(s) failed — try again`);
+    } else {
+      toast.success("Uploaded");
+    }
     router.refresh();
   }
 
@@ -80,7 +88,7 @@ export function JobActions({
           <input
             ref={inputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             capture="environment"
             multiple
             className="hidden"
@@ -101,7 +109,7 @@ export function JobActions({
               </>
             ) : (
               <>
-                <Camera className="size-4" /> Upload photos
+                <Camera className="size-4" /> Upload photos or video
               </>
             )}
           </Button>

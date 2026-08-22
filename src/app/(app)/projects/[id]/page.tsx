@@ -128,7 +128,9 @@ export default async function ProjectPage({
     supabase.from("profiles").select("id, full_name, email").order("full_name"),
   ]);
 
+  // Sign the media itself plus any video poster frames in one round trip.
   const photoUrls = new Map<string, string>();
+  const thumbUrls = new Map<string, string>();
   if (photos && photos.length > 0) {
     const { data: signed } = await supabase.storage
       .from("project-photos")
@@ -139,6 +141,19 @@ export default async function ProjectPage({
     signed?.forEach((s, i) => {
       if (s.signedUrl) photoUrls.set(photos[i].id, s.signedUrl);
     });
+
+    const withThumbs = photos.filter((p) => p.thumbnail_path);
+    if (withThumbs.length > 0) {
+      const { data: signedThumbs } = await supabase.storage
+        .from("project-photos")
+        .createSignedUrls(
+          withThumbs.map((p) => p.thumbnail_path as string),
+          3600
+        );
+      signedThumbs?.forEach((s, i) => {
+        if (s.signedUrl) thumbUrls.set(withThumbs[i].id, s.signedUrl);
+      });
+    }
   }
 
   const columns: BoardColumn[] = (columnRows ?? []).map((c) => ({
@@ -267,6 +282,10 @@ export default async function ProjectPage({
             photos={(photos ?? []).map((p) => ({
               id: p.id,
               url: photoUrls.get(p.id) ?? "",
+              thumbUrl: thumbUrls.get(p.id) ?? null,
+              mediaKind: (p.media_kind ?? "photo") as "photo" | "video",
+              durationSeconds:
+                p.duration_seconds === null ? null : Number(p.duration_seconds),
               photoType: p.photo_type as PhotoType,
               visibility: p.visibility as "internal" | "owner",
               caption: p.caption,

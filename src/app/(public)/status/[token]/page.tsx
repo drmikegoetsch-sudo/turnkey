@@ -66,7 +66,9 @@ export default async function StatusTokenPage({
         .order("created_at", { ascending: false }),
       admin
         .from("photos")
-        .select("id, storage_path, photo_type, caption, created_at")
+        .select(
+          "id, storage_path, thumbnail_path, media_kind, photo_type, caption, created_at"
+        )
         .eq("project_id", link.project_id)
         .eq("visibility", "owner")
         .order("created_at", { ascending: false }),
@@ -78,7 +80,9 @@ export default async function StatusTokenPage({
       "other") as ColumnKind;
   const rank = kindRank(kind);
 
+  // Media itself, plus poster frames so video tiles don't autoload.
   const photoUrls = new Map<string, string>();
+  const posterUrls = new Map<string, string>();
   if (photos && photos.length > 0) {
     const { data: signed } = await admin.storage
       .from("project-photos")
@@ -86,6 +90,19 @@ export default async function StatusTokenPage({
     signed?.forEach((s, i) => {
       if (s.signedUrl) photoUrls.set(photos[i].id, s.signedUrl);
     });
+
+    const withPosters = photos.filter((p) => p.thumbnail_path);
+    if (withPosters.length > 0) {
+      const { data: signedPosters } = await admin.storage
+        .from("project-photos")
+        .createSignedUrls(
+          withPosters.map((p) => p.thumbnail_path as string),
+          3600
+        );
+      signedPosters?.forEach((s, i) => {
+        if (s.signedUrl) posterUrls.set(withPosters[i].id, s.signedUrl);
+      });
+    }
   }
 
   return (
@@ -159,20 +176,33 @@ export default async function StatusTokenPage({
         {photos && photos.length > 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Progress Photos</CardTitle>
+              <CardTitle className="text-base">Progress Updates</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {photos.map((p) => (
                   <figure key={p.id}>
-                    <div className="aspect-square overflow-hidden rounded-md border">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photoUrls.get(p.id) ?? ""}
-                        alt={p.caption ?? "Progress photo"}
-                        className="size-full object-cover"
-                        loading="lazy"
-                      />
+                    <div className="aspect-square overflow-hidden rounded-md border bg-black/5">
+                      {p.media_kind === "video" ? (
+                        // preload="metadata" keeps the homeowner from pulling
+                        // the whole clip until they press play.
+                        <video
+                          src={photoUrls.get(p.id) ?? ""}
+                          poster={posterUrls.get(p.id) ?? undefined}
+                          controls
+                          playsInline
+                          preload="metadata"
+                          className="size-full bg-black object-cover"
+                        />
+                      ) : (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={photoUrls.get(p.id) ?? ""}
+                          alt={p.caption ?? "Progress photo"}
+                          className="size-full object-cover"
+                          loading="lazy"
+                        />
+                      )}
                     </div>
                     {p.caption ? (
                       <figcaption className="mt-1 text-xs text-muted-foreground">

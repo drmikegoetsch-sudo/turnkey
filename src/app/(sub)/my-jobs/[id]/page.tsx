@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { JobActions } from "./job-actions";
-import { ArrowLeft, CalendarDays, MapPin } from "lucide-react";
+import { ArrowLeft, CalendarDays, Film, MapPin, Play } from "lucide-react";
 
 export const metadata = { title: "Job Details" };
 export const dynamic = "force-dynamic";
@@ -31,24 +31,31 @@ export default async function SubJobPage({
       .maybeSingle(),
     admin
       .from("photos")
-      .select("id, storage_path, photo_type, created_at")
+      .select(
+        "id, storage_path, thumbnail_path, media_kind, photo_type, created_at"
+      )
       .eq("project_id", id)
       .eq("uploaded_by_kind", "sub")
       .order("created_at", { ascending: false }),
   ]);
   if (!project) notFound();
 
+  // Videos show their poster frame; photos show themselves.
   const photoUrls = new Map<string, string>();
   if (myPhotos && myPhotos.length > 0) {
-    const { data: signed } = await admin.storage
-      .from("project-photos")
-      .createSignedUrls(
-        myPhotos.map((p) => p.storage_path),
-        3600
-      );
-    signed?.forEach((s, i) => {
-      if (s.signedUrl) photoUrls.set(myPhotos[i].id, s.signedUrl);
-    });
+    const tilePaths = myPhotos.map((p) =>
+      p.media_kind === "video" ? p.thumbnail_path : p.storage_path
+    );
+    const withTiles = myPhotos.filter((_, i) => !!tilePaths[i]);
+    const paths = tilePaths.filter((p): p is string => !!p);
+    if (paths.length > 0) {
+      const { data: signed } = await admin.storage
+        .from("project-photos")
+        .createSignedUrls(paths, 3600);
+      signed?.forEach((s, i) => {
+        if (s.signedUrl) photoUrls.set(withTiles[i].id, s.signedUrl);
+      });
+    }
   }
 
   return (
@@ -125,24 +132,42 @@ export default async function SubJobPage({
         {myPhotos && myPhotos.length > 0 ? (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Photos from the crew</CardTitle>
+              <CardTitle className="text-base">
+                Uploaded from the crew
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-2">
-                {myPhotos.map((p) => (
-                  <div
-                    key={p.id}
-                    className="aspect-square overflow-hidden rounded-md border"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photoUrls.get(p.id) ?? ""}
-                      alt={PHOTO_TYPE_LABELS[p.photo_type as PhotoType]}
-                      className="size-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                ))}
+                {myPhotos.map((p) => {
+                  const tile = photoUrls.get(p.id);
+                  return (
+                    <div
+                      key={p.id}
+                      className="relative aspect-square overflow-hidden rounded-md border bg-muted"
+                    >
+                      {tile ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={tile}
+                          alt={PHOTO_TYPE_LABELS[p.photo_type as PhotoType]}
+                          className="size-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span className="flex size-full items-center justify-center">
+                          <Film className="size-5 text-muted-foreground" />
+                        </span>
+                      )}
+                      {p.media_kind === "video" ? (
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="rounded-full bg-black/55 p-1.5">
+                            <Play className="size-3.5 fill-white text-white" />
+                          </span>
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

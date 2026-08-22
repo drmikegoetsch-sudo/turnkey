@@ -31,7 +31,7 @@ export function ProjectTabs({
           Tasks ({openTasks || tasks.length})
         </TabsTrigger>
         <TabsTrigger value="photos" className="flex-1">
-          Photos ({photos.length})
+          Media ({photos.length})
         </TabsTrigger>
         <TabsTrigger value="notes" className="flex-1">
           Notes ({notes.length})

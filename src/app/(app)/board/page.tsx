@@ -57,13 +57,16 @@ export default async function BoardPage({
   if (projectIds.length > 0) {
     const { data: photos } = await supabase
       .from("photos")
-      .select("project_id, storage_path, created_at")
+      .select("project_id, storage_path, thumbnail_path, media_kind, created_at")
       .in("project_id", projectIds)
       .order("created_at", { ascending: false });
     photos?.forEach((p) => {
-      if (!thumbPaths.has(p.project_id)) {
-        thumbPaths.set(p.project_id, p.storage_path);
-      }
+      if (thumbPaths.has(p.project_id)) return;
+      // A video's storage object isn't an image — use its poster frame, and
+      // skip the card thumbnail entirely if the poster is missing.
+      const path =
+        p.media_kind === "video" ? p.thumbnail_path : p.storage_path;
+      if (path) thumbPaths.set(p.project_id, path);
     });
   }
 

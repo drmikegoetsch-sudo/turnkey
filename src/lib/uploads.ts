@@ -62,4 +62,42 @@ export const ALLOWED_IMAGE_TYPES = new Set([
   "image/heif",
 ]);
 
+// quicktime = .mov, what iPhones record by default.
+export const ALLOWED_VIDEO_TYPES = new Set([
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+]);
+
+// Images are compressed in the browser before upload, so they stay small.
+// Videos are uploaded as-is; 50 MB matches the storage bucket's own limit
+// and is roughly 60–90 seconds of phone video.
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+
+export function mediaKindFor(contentType: string): "photo" | "video" | null {
+  if (ALLOWED_IMAGE_TYPES.has(contentType)) return "photo";
+  if (ALLOWED_VIDEO_TYPES.has(contentType)) return "video";
+  return null;
+}
+
+export function maxBytesFor(kind: "photo" | "video") {
+  return kind === "video" ? MAX_VIDEO_BYTES : MAX_UPLOAD_BYTES;
+}
+
+export function extensionFor(contentType: string) {
+  switch (contentType) {
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    case "video/mp4":
+      return "mp4";
+    case "video/quicktime":
+      return "mov";
+    case "video/webm":
+      return "webm";
+    default:
+      return "jpg";
+  }
+}

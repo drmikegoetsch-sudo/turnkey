@@ -19,6 +19,11 @@ export async function POST(request: NextRequest) {
     photoType?: string;
     visibility?: "internal" | "owner";
     caption?: string;
+    mediaKind?: "photo" | "video";
+    mimeType?: string;
+    sizeBytes?: number;
+    durationSeconds?: number;
+    thumbnailPath?: string | null;
   };
   try {
     body = await request.json();
@@ -94,6 +99,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Upload not found" }, { status: 400 });
   }
 
+  const mediaKind = body.mediaKind === "video" ? "video" : "photo";
+  // Only trust a thumbnail path that lives under this project's folder.
+  const thumbnailPath =
+    mediaKind === "video" &&
+    body.thumbnailPath &&
+    body.thumbnailPath.startsWith(`${projectId}/`)
+      ? body.thumbnailPath
+      : null;
+
   const { error } = await admin.from("photos").insert({
     id: photoId,
     project_id: projectId,
@@ -104,6 +118,19 @@ export async function POST(request: NextRequest) {
     uploaded_by_kind: uploadedByKind,
     uploaded_by: uploadedBy,
     share_link_id: shareLinkId,
+    media_kind: mediaKind,
+    mime_type: body.mimeType?.slice(0, 100) ?? null,
+    size_bytes:
+      typeof body.sizeBytes === "number" && body.sizeBytes > 0
+        ? Math.round(body.sizeBytes)
+        : null,
+    duration_seconds:
+      mediaKind === "video" &&
+      typeof body.durationSeconds === "number" &&
+      Number.isFinite(body.durationSeconds)
+        ? Math.round(body.durationSeconds * 100) / 100
+        : null,
+    thumbnail_path: thumbnailPath,
     confirmed_at: new Date().toISOString(),
   });
 
