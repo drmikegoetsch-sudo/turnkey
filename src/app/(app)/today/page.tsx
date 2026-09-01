@@ -71,7 +71,8 @@ export default async function TodayPage() {
            next_action_due, column_changed_at,
            customers(name), board_columns(label, color, kind)`
         )
-        .is("archived_at", null),
+        .is("archived_at", null)
+        .is("declined_at", null),
       supabase
         .from("appointments")
         .select(

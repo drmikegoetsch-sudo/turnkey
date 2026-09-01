@@ -11,7 +11,10 @@ import {
   formatMoney,
   projectNumber,
 } from "@/lib/stages";
+import { findPriorDeclines } from "@/lib/declined";
+import { PriorDeclinesBanner } from "@/components/prior-declines-banner";
 import { LifecycleCard } from "./lifecycle-card";
+import { DeclineCard } from "./decline-card";
 import { DoThisNext } from "./do-this-next";
 import { ProjectTabs } from "./project-tabs";
 import { EditProjectDialog } from "./edit-project-dialog";
@@ -180,6 +183,15 @@ export default async function ProjectPage({
     email: string | null;
   };
 
+  // Any earlier quote this same person or property already turned down.
+  const priorDeclines = await findPriorDeclines({
+    excludeProjectId: project.id,
+    phone: customer?.phone,
+    altPhone: customer?.alt_phone,
+    email: customer?.email,
+    address: project.property_address,
+  });
+
   const billable = BILLABLE_KINDS.includes(currentColumn.kind);
   const teamMembers = (team ?? []).map((t) => ({
     id: t.id,
@@ -245,6 +257,12 @@ export default async function ProjectPage({
         />
       </div>
 
+      {priorDeclines.length > 0 ? (
+        <div className="mt-5">
+          <PriorDeclinesBanner declines={priorDeclines} />
+        </div>
+      ) : null}
+
       <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Main column */}
         <div className="grid content-start gap-5">
@@ -256,13 +274,27 @@ export default async function ProjectPage({
             blockedReason={project.blocked_reason}
           />
 
-          <DoThisNext
+          {project.declined_at ? null : (
+            <DoThisNext
+              projectId={project.id}
+              nextAction={project.next_action}
+              nextActionDue={project.next_action_due}
+              columns={columns}
+              currentColumnId={currentColumn.id}
+              today={today}
+            />
+          )}
+
+          <DeclineCard
             projectId={project.id}
-            nextAction={project.next_action}
-            nextActionDue={project.next_action_due}
-            columns={columns}
-            currentColumnId={currentColumn.id}
-            today={today}
+            declinedAt={project.declined_at}
+            declinedReason={project.declined_reason}
+            declinedNote={project.declined_note}
+            projectValue={
+              project.project_value === null
+                ? null
+                : Number(project.project_value)
+            }
           />
 
           <ProjectTabs

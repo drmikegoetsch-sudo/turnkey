@@ -142,3 +142,19 @@ export function formatMoney(value: number | null | undefined) {
 export function projectNumber(n: number) {
   return `TSN-${n}`;
 }
+
+// Why a quote didn't land. Short and pickable so it actually gets filled in
+// on a phone, and so the reasons can be counted later. Lives here rather than
+// in lib/declined.ts because the decline dialog is a client component.
+export const DECLINE_REASONS = [
+  "Price too high",
+  "Went with another contractor",
+  "Doing it themselves",
+  "Postponed / bad timing",
+  "Scope changed",
+  "Never responded",
+  "Not a good fit for us",
+  "Other",
+] as const;
+
+export type DeclineReason = (typeof DECLINE_REASONS)[number];

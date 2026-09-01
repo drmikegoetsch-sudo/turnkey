@@ -30,7 +30,14 @@ import { ColumnMenu } from "./column-menu";
 import { NewColumnDialog } from "./new-column-dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Camera, Users, Plus, ImageOff, OctagonAlert } from "lucide-react";
+import {
+  Camera,
+  Users,
+  Plus,
+  ImageOff,
+  OctagonAlert,
+  ThumbsDown,
+} from "lucide-react";
 
 export type BoardProject = {
   id: string;
@@ -42,6 +49,7 @@ export type BoardProject = {
   projectType: string;
   projectValue: number | null;
   isBlocked: boolean;
+  isDeclined: boolean;
   customerName: string;
   photoCount: number;
   subCount: number;
@@ -85,6 +93,12 @@ function ProjectCard({
             {value ?? <span className="text-muted-foreground">TBD</span>}
           </p>
           <div className="flex shrink-0 items-center gap-1">
+            {project.isDeclined ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                <ThumbsDown className="size-3" />
+                Declined
+              </span>
+            ) : null}
             {project.isBlocked ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
                 <OctagonAlert className="size-3" />
@@ -254,12 +268,14 @@ export function BoardClient({
   today,
   searchTerm,
   showClosed,
+  showDeclined,
 }: {
   columns: BoardColumn[];
   initialProjects: BoardProject[];
   today: string;
   searchTerm: string;
   showClosed: boolean;
+  showDeclined: boolean;
 }) {
   const [projects, setProjects] = useState(initialProjects);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -377,6 +393,11 @@ export function BoardClient({
               </Link>
             </Button>
           ) : null}
+          <Button asChild variant={showDeclined ? "secondary" : "ghost"} size="sm">
+            <Link href={showDeclined ? "/board" : "/board?declined=1"}>
+              {showDeclined ? "Hide declined" : "Declined estimates"}
+            </Link>
+          </Button>
           <Button
             asChild
             size="lg"

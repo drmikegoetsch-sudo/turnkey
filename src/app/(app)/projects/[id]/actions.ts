@@ -116,6 +116,64 @@ export async function setColumn(projectId: string, columnId: string) {
   return { ok: true as const };
 }
 
+// Records a lost quote. The project keeps everything — photos, notes, the
+// original inquiry — it just leaves the active board. Nothing is deleted,
+// because this record is what stops a repeat trip to the same address.
+export async function declineEstimate(
+  projectId: string,
+  reason: string,
+  note?: string
+) {
+  const { supabase, user } = await requireUser();
+  const clean = reason.slice(0, 100).trim();
+  if (!clean) return { ok: false as const, error: "Pick a reason" };
+
+  const { error } = await supabase
+    .from("projects")
+    .update({
+      declined_at: new Date().toISOString(),
+      declined_reason: clean,
+      declined_note: note?.slice(0, 1000).trim() || null,
+      next_action: null,
+      next_action_due: null,
+    })
+    .eq("id", projectId);
+  if (error) return { ok: false as const, error: "Could not save" };
+
+  await supabase.from("notes").insert({
+    project_id: projectId,
+    kind: "note",
+    visibility: "internal",
+    body: `Estimate declined — ${clean}${note?.trim() ? `: ${note.trim()}` : ""}`,
+    author_kind: "internal",
+    author_id: user.id,
+  });
+
+  refresh(projectId);
+  return { ok: true as const };
+}
+
+export async function reopenEstimate(projectId: string) {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase
+    .from("projects")
+    .update({ declined_at: null, declined_reason: null, declined_note: null })
+    .eq("id", projectId);
+  if (error) return { ok: false as const, error: "Could not reopen" };
+
+  await supabase.from("notes").insert({
+    project_id: projectId,
+    kind: "note",
+    visibility: "internal",
+    body: "Estimate reopened — back in the pipeline.",
+    author_kind: "internal",
+    author_id: user.id,
+  });
+
+  refresh(projectId);
+  return { ok: true as const };
+}
+
 export async function setBlocked(
   projectId: string,
   blocked: boolean,

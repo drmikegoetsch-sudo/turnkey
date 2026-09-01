@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 export default async function BoardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; closed?: string }>;
+  searchParams: Promise<{ q?: string; closed?: string; declined?: string }>;
 }) {
-  const { q, closed } = await searchParams;
+  const { q, closed, declined } = await searchParams;
   const supabase = await createClient();
   const tz = process.env.APP_TIMEZONE ?? "America/Chicago";
   const today = formatInTimeZone(new Date(), tz, "yyyy-MM-dd");
@@ -35,12 +35,18 @@ export default async function BoardPage({
     .from("projects")
     .select(
       `id, title, column_id, board_position, next_action, next_action_due,
-       column_changed_at, project_type, project_value, is_blocked,
+       column_changed_at, project_type, project_value, is_blocked, declined_at,
        customers(name),
        photos(count), project_subcontractors(count)`
     )
     .is("archived_at", null)
     .order("board_position");
+
+  // Declined estimates drop off the working board. They stay searchable and
+  // reachable from the Declined view — nothing is deleted.
+  if (declined !== "1") {
+    query = query.is("declined_at", null);
+  }
 
   if (q?.trim()) {
     const term = `%${q.trim()}%`;
@@ -97,6 +103,7 @@ export default async function BoardPage({
     projectType: p.project_type,
     projectValue: p.project_value === null ? null : Number(p.project_value),
     isBlocked: p.is_blocked,
+    isDeclined: !!p.declined_at,
     customerName:
       (p.customers as unknown as { name: string } | null)?.name ?? "",
     photoCount: countOf(p.photos),
@@ -111,6 +118,7 @@ export default async function BoardPage({
       today={today}
       searchTerm={q ?? ""}
       showClosed={closed === "1"}
+      showDeclined={declined === "1"}
     />
   );
 }
