@@ -1,9 +1,12 @@
 "use server";
 
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { intakeSchema, type IntakeInput } from "@/lib/schemas/intake";
 import { signIntakeGrant } from "@/lib/uploads";
+import { sendNewLeadNotification } from "@/lib/email";
+import { findPriorDeclines } from "@/lib/declined";
 
 // Best-effort per-IP rate limit (resets on serverless cold start, which is
 // fine — this is spam friction, not a security boundary).
@@ -96,7 +99,7 @@ export async function submitIntake(input: IntakeInput): Promise<IntakeResult> {
       column_id: firstColumn.id,
       source: "intake",
     })
-    .select("id")
+    .select("id, project_number")
     .single();
   if (projectError || !project) {
     return { ok: false, error: "Something went wrong — please try again." };
@@ -134,6 +137,41 @@ export async function submitIntake(input: IntakeInput): Promise<IntakeResult> {
     to_column_id: firstColumn.id,
     to_label: firstColumn.label,
     changed_by: null,
+  });
+
+  // Alert the owners — after the response, so the customer's confirmation
+  // page never waits on an email, and a mail outage can't cost us the lead.
+  after(async () => {
+    try {
+      const priors = await findPriorDeclines({
+        excludeProjectId: project.id,
+        phone: data.phone,
+        altPhone: data.alt_phone,
+        email: data.email,
+        address: data.address,
+      });
+
+      const result = await sendNewLeadNotification({
+        projectId: project.id,
+        projectNumber: project.project_number ?? null,
+        customerName: data.name,
+        phone: data.phone,
+        email: data.email,
+        address: data.address,
+        projectType: data.project_type || null,
+        budget: data.overall_budget || null,
+        description: data.project1_description || null,
+        availability: data.meeting_availability || null,
+        referral: data.referral_source || null,
+        desiredStart: data.desired_start || null,
+        priorDeclineCount: priors.length,
+      });
+      if (!result.ok) {
+        console.error("[intake] lead notification failed", result.error);
+      }
+    } catch (e) {
+      console.error("[intake] lead notification threw", e);
+    }
   });
 
   return {
