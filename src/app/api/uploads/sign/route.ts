@@ -10,6 +10,7 @@ import {
   mediaKindFor,
   photoStoragePath,
   verifyIntakeGrant,
+  MAX_VIDEO_MB,
 } from "@/lib/uploads";
 
 // Mints a signed upload URL for the project-photos bucket (photos + videos).
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       {
         error:
           kind === "video"
-            ? "Video is too large (50 MB max — try a shorter clip)"
+            ? `Video is too large (${MAX_VIDEO_MB} MB max — try a shorter clip)`
             : "Photo is too large (10 MB max)",
       },
       { status: 413 }

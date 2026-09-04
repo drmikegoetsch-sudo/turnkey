@@ -70,10 +70,13 @@ export const ALLOWED_VIDEO_TYPES = new Set([
 ]);
 
 // Images are compressed in the browser before upload, so they stay small.
-// Videos are uploaded as-is; 50 MB matches the storage bucket's own limit
-// and is roughly 60–90 seconds of phone video.
+// Videos are uploaded as-is; 100 MB matches both the bucket's own limit and
+// the project-wide storage limit, and is roughly 2–3 minutes of phone video.
+// Raising this means raising all three — see supabase/migrations/0007.
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+
+export const MAX_VIDEO_MB = Math.round(MAX_VIDEO_BYTES / (1024 * 1024));
 
 export function mediaKindFor(contentType: string): "photo" | "video" | null {
   if (ALLOWED_IMAGE_TYPES.has(contentType)) return "photo";
