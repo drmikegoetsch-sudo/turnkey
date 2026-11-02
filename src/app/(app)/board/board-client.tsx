@@ -50,6 +50,7 @@ export type BoardProject = {
   projectValue: number | null;
   isBlocked: boolean;
   isDeclined: boolean;
+  declinedReason: string | null;
   customerName: string;
   photoCount: number;
   subCount: number;
@@ -126,8 +127,12 @@ function ProjectCard({
 
         <div className="mt-3 flex items-center justify-between gap-2 border-t pt-2.5">
           <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {project.nextAction ?? (
-              <span className="italic">No next action set</span>
+            {project.isDeclined ? (
+              <span>Declined — {project.declinedReason ?? "no reason given"}</span>
+            ) : (
+              project.nextAction ?? (
+                <span className="italic">No next action set</span>
+              )
             )}
           </p>
           <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
@@ -262,6 +267,54 @@ function Column({
   );
 }
 
+// Declined estimates live here instead of their old working column — the
+// same show/hide model as Closed. Read-only: reopening is a deliberate
+// action on the project page, not something to do by accidental drag.
+function DeclinedColumn({
+  projects,
+  today,
+}: {
+  projects: BoardProject[];
+  today: string;
+}) {
+  const total = projects.reduce((sum, p) => sum + (p.projectValue ?? 0), 0);
+  return (
+    <section className="glass-column flex w-[82vw] max-w-[300px] shrink-0 snap-center flex-col rounded-2xl sm:w-[290px] sm:snap-align-none">
+      <header className="px-3.5 pb-2 pt-3">
+        <div className="flex items-center gap-2">
+          <span className="size-2 shrink-0 rounded-full bg-rose-400" />
+          <h2 className="truncate text-sm font-semibold">Declined</h2>
+          <span className="text-sm text-muted-foreground">{projects.length}</span>
+        </div>
+        <p className="mt-0.5 pl-4 text-sm text-muted-foreground">
+          {total > 0 ? `${formatMoney(total)} quoted` : "—"}
+        </p>
+      </header>
+      <div className="flex min-h-32 flex-1 flex-col gap-2.5 overflow-y-auto p-2.5 pt-0.5">
+        {projects.map((p) => (
+          <Link key={p.id} href={`/projects/${p.id}`} className="opacity-90">
+            <ProjectCard project={p} today={today} />
+          </Link>
+        ))}
+        {projects.length === 0 ? (
+          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+            No declined estimates.
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function boardHref(opts: { q?: string; closed?: boolean; declined?: boolean }) {
+  const params = new URLSearchParams();
+  if (opts.q) params.set("q", opts.q);
+  if (opts.closed) params.set("closed", "1");
+  if (opts.declined) params.set("declined", "1");
+  const s = params.toString();
+  return s ? `/board?${s}` : "/board";
+}
+
 export function BoardClient({
   columns,
   initialProjects,
@@ -299,10 +352,19 @@ export function BoardClient({
     [columns, showClosed, searchTerm]
   );
 
+  // Declined jobs never sit in a working column.
+  const declinedProjects = useMemo(
+    () => projects.filter((p) => p.isDeclined),
+    [projects]
+  );
+  const showDeclinedColumn =
+    showDeclined || (!!searchTerm && declinedProjects.length > 0);
+
   const byColumn = useMemo(() => {
     const map = new Map<string, BoardProject[]>();
     columns.forEach((c) => map.set(c.id, []));
     [...projects]
+      .filter((p) => !p.isDeclined)
       .sort((a, b) => a.boardPosition - b.boardPosition)
       .forEach((p) => map.get(p.columnId)?.push(p));
     return map;
@@ -386,18 +448,34 @@ export function BoardClient({
         <div className="flex items-center gap-2">
           {hiddenClosedCount > 0 || showClosed ? (
             <Button asChild variant="ghost" size="sm">
-              <Link href={showClosed ? "/board" : "/board?closed=1"}>
+              <Link
+                href={boardHref({
+                  q: searchTerm,
+                  closed: !showClosed,
+                  declined: showDeclined,
+                })}
+              >
                 {showClosed
                   ? "Hide closed"
                   : `Show closed (${hiddenClosedCount})`}
               </Link>
             </Button>
           ) : null}
-          <Button asChild variant={showDeclined ? "secondary" : "ghost"} size="sm">
-            <Link href={showDeclined ? "/board" : "/board?declined=1"}>
-              {showDeclined ? "Hide declined" : "Declined estimates"}
-            </Link>
-          </Button>
+          {declinedProjects.length > 0 || showDeclined ? (
+            <Button asChild variant="ghost" size="sm">
+              <Link
+                href={boardHref({
+                  q: searchTerm,
+                  closed: showClosed,
+                  declined: !showDeclined,
+                })}
+              >
+                {showDeclined
+                  ? "Hide declined"
+                  : `Show declined (${declinedProjects.length})`}
+              </Link>
+            </Button>
+          ) : null}
           <Button
             asChild
             size="lg"
@@ -429,6 +507,9 @@ export function BoardClient({
               isLast={i === visibleColumns.length - 1}
             />
           ))}
+          {showDeclinedColumn ? (
+            <DeclinedColumn projects={declinedProjects} today={today} />
+          ) : null}
           <NewColumnDialog lastPosition={columns.at(-1)?.position ?? 0} />
         </div>
         <DragOverlay>

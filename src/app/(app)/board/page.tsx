@@ -36,23 +36,48 @@ export default async function BoardPage({
     .select(
       `id, title, column_id, board_position, next_action, next_action_due,
        column_changed_at, project_type, project_value, is_blocked, declined_at,
+       declined_reason,
        customers(name),
        photos(count), project_subcontractors(count)`
     )
     .is("archived_at", null)
     .order("board_position");
 
-  // Declined estimates drop off the working board. They stay searchable and
-  // reachable from the Declined view — nothing is deleted.
-  if (declined !== "1") {
-    query = query.is("declined_at", null);
-  }
+  // Declined estimates are always fetched — the board hides them from the
+  // working columns and shows them in their own Declined column on request,
+  // the same way Closed works. Filtering them out here is what made the
+  // Declined toggle and search come back empty.
 
   if (q?.trim()) {
-    const term = `%${q.trim()}%`;
-    query = query.or(
-      `title.ilike.${term},property_address.ilike.${term},scope.ilike.${term}`
-    );
+    const raw = q.trim();
+    // Characters that would break PostgREST's or() syntax or act as
+    // wildcards are dropped from the user's text.
+    const safe = raw.replace(/[,()*%\\]/g, " ").replace(/\s+/g, " ").trim();
+    const term = `%${safe}%`;
+
+    // People search by who the job is for far more than by the job title.
+    const digits = raw.replace(/\D/g, "");
+    const customerFilters = [`name.ilike.${term}`, `email.ilike.${term}`];
+    if (digits.length >= 4) customerFilters.push(`phone.ilike.%${digits}%`);
+    const { data: matchedCustomers } = await supabase
+      .from("customers")
+      .select("id")
+      .or(customerFilters.join(","));
+
+    const clauses = [
+      `title.ilike.${term}`,
+      `property_address.ilike.${term}`,
+      `scope.ilike.${term}`,
+    ];
+    const customerIds = (matchedCustomers ?? []).map((c) => c.id);
+    if (customerIds.length > 0) {
+      clauses.push(`customer_id.in.(${customerIds.join(",")})`);
+    }
+    // "1023" or "TSN-1023" jumps straight to that project.
+    const num = raw.match(/^(?:tsn[-\s]?)?(\d{3,7})$/i);
+    if (num) clauses.push(`project_number.eq.${num[1]}`);
+
+    query = query.or(clauses.join(","));
   }
 
   const { data } = await query;
@@ -104,6 +129,7 @@ export default async function BoardPage({
     projectValue: p.project_value === null ? null : Number(p.project_value),
     isBlocked: p.is_blocked,
     isDeclined: !!p.declined_at,
+    declinedReason: p.declined_reason ?? null,
     customerName:
       (p.customers as unknown as { name: string } | null)?.name ?? "",
     photoCount: countOf(p.photos),
@@ -113,6 +139,10 @@ export default async function BoardPage({
 
   return (
     <BoardClient
+      // The board keeps its own copy of the project list for optimistic
+      // drags. A new search or toggle must start from fresh server data
+      // rather than the list it had before, so remount on any change.
+      key={`${q ?? ""}|${closed ?? ""}|${declined ?? ""}`}
       columns={columns}
       initialProjects={projects}
       today={today}
