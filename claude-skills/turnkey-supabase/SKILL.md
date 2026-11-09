@@ -77,7 +77,13 @@ Every column carries a semantic `kind` that never lies:
   archived_at`. Active columns: `archived_at=is.null`, order by `position`.
 - **customers** — `id, name, phone, alt_phone, email`
 - **tasks** — `id, project_id, title, due_date, completed_at (null = open),
-  assigned_to → profiles.id, created_at`
+  assigned_to → profiles.id, position, created_at`. `position` is the crew's
+  manual order — always `order=position.asc`, never by created_at. To add a
+  task at the end, use max(position)+1 for that project.
+- **materials** — the project's running materials list: `id, project_id,
+  name, quantity (free text: "6 sheets", "3 bags"), notes, position,
+  checked_at (null = still needed), checked_by → profiles.id, created_at`.
+  "What do we still need for X?" = `checked_at=is.null`, ordered by position.
 - **notes** — `id, project_id, kind ('note'|'update'|'issue'), visibility
   ('internal'|'owner' — owner-visible shows on the customer status page),
   body, author_kind ('internal'|'sub'|'customer'), created_at`. Sub-reported

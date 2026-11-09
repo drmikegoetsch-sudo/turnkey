@@ -81,6 +81,7 @@ export default async function ProjectPage({
     { data: intake },
     { data: types },
     { data: team },
+    { data: materials },
   ] = await Promise.all([
     supabase
       .from("board_columns")
@@ -91,7 +92,7 @@ export default async function ProjectPage({
       .from("tasks")
       .select("*, assignee:profiles!tasks_assigned_to_fkey(full_name)")
       .eq("project_id", id)
-      .order("created_at"),
+      .order("position"),
     supabase
       .from("notes")
       .select("*, profiles(full_name)")
@@ -129,6 +130,11 @@ export default async function ProjectPage({
       .eq("active", true)
       .order("position"),
     supabase.from("profiles").select("id, full_name, email").order("full_name"),
+    supabase
+      .from("materials")
+      .select("id, name, quantity, checked_at, position")
+      .eq("project_id", id)
+      .order("position"),
   ]);
 
   // Sign the media itself plus any video poster frames in one round trip.
@@ -310,6 +316,14 @@ export default async function ProjectPage({
               assigneeName:
                 (t.assignee as unknown as { full_name: string } | null)
                   ?.full_name ?? null,
+              position: Number(t.position),
+            }))}
+            materials={(materials ?? []).map((m) => ({
+              id: m.id,
+              name: m.name,
+              quantity: m.quantity,
+              checkedAt: m.checked_at,
+              position: Number(m.position),
             }))}
             photos={(photos ?? []).map((p) => ({
               id: p.id,

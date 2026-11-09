@@ -270,13 +270,63 @@ export async function addTask(projectId: string, title: string, due: string | nu
   const { supabase, user } = await requireUser();
   const clean = title.slice(0, 500).trim();
   if (!clean) return { ok: false as const, error: "Task needs a title" };
+
+  // New tasks go to the bottom of the list.
+  const { data: last } = await supabase
+    .from("tasks")
+    .select("position")
+    .eq("project_id", projectId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   const { error } = await supabase.from("tasks").insert({
     project_id: projectId,
     title: clean,
     due_date: due || null,
+    position: (last?.position ?? 0) + 1,
     created_by: user.id,
   });
   if (error) return { ok: false as const, error: "Could not add task" };
+  refresh(projectId);
+  return { ok: true as const };
+}
+
+export async function updateTask(
+  projectId: string,
+  taskId: string,
+  fields: { title?: string; dueDate?: string | null }
+) {
+  const { supabase } = await requireUser();
+  const update: { title?: string; due_date?: string | null } = {};
+  if (fields.title !== undefined) {
+    const clean = fields.title.slice(0, 500).trim();
+    if (!clean) return { ok: false as const, error: "Task needs a title" };
+    update.title = clean;
+  }
+  if (fields.dueDate !== undefined) update.due_date = fields.dueDate || null;
+
+  const { error } = await supabase.from("tasks").update(update).eq("id", taskId);
+  if (error) return { ok: false as const, error: "Could not save task" };
+  refresh(projectId);
+  return { ok: true as const };
+}
+
+export async function reorderTask(
+  projectId: string,
+  taskId: string,
+  position: number
+) {
+  if (!Number.isFinite(position)) {
+    return { ok: false as const, error: "Invalid position" };
+  }
+  const { supabase } = await requireUser();
+  const { error } = await supabase
+    .from("tasks")
+    .update({ position })
+    .eq("id", taskId)
+    .eq("project_id", projectId);
+  if (error) return { ok: false as const, error: "Could not reorder" };
   refresh(projectId);
   return { ok: true as const };
 }
